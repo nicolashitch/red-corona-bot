@@ -1,0 +1,9 @@
+{
+  "name": "red-corona-bot",
+  "version": "1.0.0",
+  "description": "Telegram Bot Red Corona",
+  "main": "api/telegram.js",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
