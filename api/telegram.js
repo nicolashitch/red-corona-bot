@@ -31,7 +31,6 @@ function mainMenu() {
   };
 }
 
-
 function platformMenu() {
   return {
     keyboard: [
@@ -50,6 +49,7 @@ function afterRegisterMenu() {
       ["📢 Canal Oficial"],
       ["🎁 Reclamar Bonos"],
       ["⭐ Acceso VIP"],
+      ["💳 Cargar"],
       ["⬅️ Volver"]
     ],
     resize_keyboard: true
@@ -113,20 +113,17 @@ export default async function handler(req, res) {
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
   }
+
   if (text === "💳 Cargar") {
-  await sendMessage(
-    ADMIN_ID,
-    `💳 <b>SOLICITUD DE CARGA</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-  );
+    sessions[chatId] = { step: "load_user" };
 
-  await sendMessage(
-    chatId,
-    "💳 Para cargar, enviá tu comprobante por este chat.\n\nUn administrador revisará la acreditación y te confirmará cuando esté impactada.",
-    mainMenu()
-  );
+    await sendMessage(
+      chatId,
+      "💳 Perfecto.\n\n¿Cuál es tu usuario?"
+    );
 
-  return res.status(200).json({ ok: true });
-}
+    return res.status(200).json({ ok: true });
+  }
 
   if (text === "👨‍💼 Hablar con un ADM" || text === "/admin") {
     await sendMessage(chatId, "Podés hablar con un administrador acá:\n\nhttps://t.me/Eliamcorona");
@@ -205,6 +202,59 @@ export default async function handler(req, res) {
   }
 
   const session = sessions[chatId] || {};
+
+  if (session.step === "load_user") {
+    session.loadUser = text;
+    session.step = "load_platform";
+    sessions[chatId] = session;
+
+    await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
+    return res.status(200).json({ ok: true });
+  }
+
+  if (session.step === "load_platform") {
+    const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
+
+    if (!platforms.includes(text)) {
+      await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
+      return res.status(200).json({ ok: true });
+    }
+
+    session.loadPlatform = text;
+    session.step = "waiting_receipt";
+    sessions[chatId] = session;
+
+    await sendMessage(
+      ADMIN_ID,
+      `💳 <b>SOLICITUD DE CARGA</b>\n\n` +
+      `👤 Usuario: ${session.loadUser}\n` +
+      `🎮 Plataforma: ${session.loadPlatform}\n\n` +
+      `Telegram:\n` +
+      `ID: ${chatId}\n` +
+      `Username: @${username}\n` +
+      `Nombre Telegram: ${firstName} ${lastName}`
+    );
+
+    await sendMessage(
+      chatId,
+      `💳 <b>Datos para cargar</b>
+
+🏦 Alias: redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`,
+      mainMenu()
+    );
+
+    return res.status(200).json({ ok: true });
+  }
 
   if (session.step === "name") {
     session.name = text;
