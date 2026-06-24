@@ -73,6 +73,38 @@ export default async function handler(req, res) {
     return res.status(200).send("Red Corona Bot Online");
   }
 
+  const update = req.body;
+
+  if (update.callback_query) {
+    const data = update.callback_query.data;
+    const adminChatId = update.callback_query.message.chat.id;
+
+    if (data.startsWith("confirmar_carga_")) {
+      const userId = data.replace("confirmar_carga_", "");
+
+      await sendMessage(
+        userId,
+        "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias."
+      );
+
+      await sendMessage(adminChatId, "✅ Confirmación enviada al usuario.");
+      return res.status(200).json({ ok: true });
+    }
+
+    if (data.startsWith("enviar_usuario_")) {
+      const userId = data.replace("enviar_usuario_", "");
+
+      await sendMessage(
+        adminChatId,
+        `📩 Para enviar el usuario, copiá y usá este formato:\n\n/enviarusuario ${userId} USUARIO CONTRASEÑA LINK`
+      );
+
+      return res.status(200).json({ ok: true });
+    }
+  }
+
+  if (!update.message) {
+    return res.status(200).json({ ok: true });
   }
 
   const chatId = update.message.chat.id;
@@ -80,21 +112,56 @@ export default async function handler(req, res) {
   const username = update.message.from?.username || "Sin username";
   const firstName = update.message.from?.first_name || "";
   const lastName = update.message.from?.last_name || "";
-  
-}
-if (update.message.photo || update.message.document) {
-  await sendMessage(
-    ADMIN_ID,
-    `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-  );
 
-  await sendMessage(
-    chatId,
-    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
-  );
+  if (text.startsWith("/enviarusuario") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
 
-  return res.status(200).json({ ok: true });
-}
+    if (parts.length < 5) {
+      await sendMessage(
+        ADMIN_ID,
+        "Formato incorrecto.\n\nUsá:\n/enviarusuario ID USUARIO CONTRASEÑA LINK"
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+    const user = parts[2];
+    const pass = parts[3];
+    const link = parts.slice(4).join(" ");
+
+    await sendMessage(
+      userId,
+      `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`
+    );
+
+    await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (update.message.photo || update.message.document) {
+    await sendMessage(
+      ADMIN_ID,
+      `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
+      {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ Confirmar carga",
+              callback_data: `confirmar_carga_${chatId}`
+            }
+          ]
+        ]
+      }
+    );
+
+    await sendMessage(
+      chatId,
+      "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
+    );
+
+    return res.status(200).json({ ok: true });
+  }
+
   if (text === "/start" || text === "⬅️ Volver") {
     await sendMessage(
       ADMIN_ID,
@@ -127,11 +194,7 @@ if (update.message.photo || update.message.document) {
   if (text === "💳 Cargar") {
     sessions[chatId] = { step: "load_user" };
 
-    await sendMessage(
-      chatId,
-      "💳 Perfecto.\n\n¿Cuál es tu usuario?"
-    );
-
+    await sendMessage(chatId, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
 
@@ -141,19 +204,12 @@ if (update.message.photo || update.message.document) {
   }
 
   if (text === "📢 Canal Oficial" || text === "/canal") {
-    await sendMessage(
-      chatId,
-      "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet"
-    );
+    await sendMessage(chatId, "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎁 Beneficios" || text === "/beneficios" || text === "🎁 Reclamar Bonos") {
-    await sendMessage(
-      chatId,
-      "🎁 Seleccioná el beneficio que querés consultar:",
-      bonusesMenu()
-    );
+    await sendMessage(chatId, "🎁 Seleccioná el beneficio que querés consultar:", bonusesMenu());
     return res.status(200).json({ ok: true });
   }
 
@@ -236,13 +292,7 @@ if (update.message.photo || update.message.document) {
 
     await sendMessage(
       ADMIN_ID,
-      `💳 <b>SOLICITUD DE CARGA</b>\n\n` +
-      `👤 Usuario: ${session.loadUser}\n` +
-      `🎮 Plataforma: ${session.loadPlatform}\n\n` +
-      `Telegram:\n` +
-      `ID: ${chatId}\n` +
-      `Username: @${username}\n` +
-      `Nombre Telegram: ${firstName} ${lastName}`
+      `💳 <b>SOLICITUD DE CARGA</b>\n\n👤 Usuario: ${session.loadUser}\n🎮 Plataforma: ${session.loadPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
     );
 
     await sendMessage(
@@ -316,7 +366,20 @@ Sonia Raquel Gutierrez
       `Username: @${username}\n` +
       `Nombre Telegram: ${firstName} ${lastName}`;
 
-    await sendMessage(ADMIN_ID, adminMessage);
+    await sendMessage(
+      ADMIN_ID,
+      adminMessage,
+      {
+        inline_keyboard: [
+          [
+            {
+              text: "📩 Enviar usuario",
+              callback_data: `enviar_usuario_${chatId}`
+            }
+          ]
+        ]
+      }
+    );
 
     await sendMessage(
       chatId,
