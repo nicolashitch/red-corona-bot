@@ -22,6 +22,7 @@ function mainMenu() {
   return {
     keyboard: [
       ["🎮 Crear Usuario"],
+      ["💳 Cargar"],
       ["👨‍💼 Hablar con un ADM"],
       ["📢 Canal Oficial"],
       ["🎁 Beneficios"]
@@ -29,6 +30,7 @@ function mainMenu() {
     resize_keyboard: true
   };
 }
+
 
 function platformMenu() {
   return {
@@ -111,6 +113,20 @@ export default async function handler(req, res) {
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
   }
+  if (text === "💳 Cargar") {
+  await sendMessage(
+    ADMIN_ID,
+    `💳 <b>SOLICITUD DE CARGA</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
+
+  await sendMessage(
+    chatId,
+    "💳 Para cargar, enviá tu comprobante por este chat.\n\nUn administrador revisará la acreditación y te confirmará cuando esté impactada.",
+    mainMenu()
+  );
+
+  return res.status(200).json({ ok: true });
+}
 
   if (text === "👨‍💼 Hablar con un ADM" || text === "/admin") {
     await sendMessage(chatId, "Podés hablar con un administrador acá:\n\nhttps://t.me/Eliamcorona");
