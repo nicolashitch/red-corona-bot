@@ -84,6 +84,24 @@ export default async function handler(req, res) {
   const username = update.message.from?.username || "Sin username";
   const firstName = update.message.from?.first_name || "";
   const lastName = update.message.from?.last_name || "";
+  if (update.message.photo || update.message.document) {
+
+  await sendMessage(
+    ADMIN_ID,
+    `📎 <b>COMPROBANTE RECIBIDO</b>
+
+ID: ${chatId}
+Username: @${username}
+Nombre: ${firstName} ${lastName}`
+  );
+
+  await sendMessage(
+    chatId,
+    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
+  );
+
+  return res.status(200).json({ ok: true });
+}
 
   if (text === "/start" || text === "⬅️ Volver") {
     await sendMessage(
