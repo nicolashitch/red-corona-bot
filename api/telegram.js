@@ -72,27 +72,24 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("Red Corona Bot Online");
   }
-
-  const update = req.body;
-
-  if (!update.message) {
-    return res.status(200).json({ ok: true });
-  }
-
-  const chatId = update.message.chat.id;
-  const text = update.message.text || "";
-  const username = update.message.from?.username || "Sin username";
-  const firstName = update.message.from?.first_name || "";
-  const lastName = update.message.from?.last_name || "";
-  if (update.message.photo || update.message.document) {
-
+if (update.message.photo || update.message.document) {
   await sendMessage(
     ADMIN_ID,
     `📎 <b>COMPROBANTE RECIBIDO</b>
 
 ID: ${chatId}
 Username: @${username}
-Nombre: ${firstName} ${lastName}`
+Nombre: ${firstName} ${lastName}`,
+    {
+      inline_keyboard: [
+        [
+          {
+            text: "✅ Confirmar carga",
+            callback_data: `confirmar_carga_${chatId}`
+          }
+        ]
+      ]
+    }
   );
 
   await sendMessage(
@@ -101,6 +98,15 @@ Nombre: ${firstName} ${lastName}`
   );
 
   return res.status(200).json({ ok: true });
+}
+  }
+
+  const chatId = update.message.chat.id;
+  const text = update.message.text || "";
+  const username = update.message.from?.username || "Sin username";
+  const firstName = update.message.from?.first_name || "";
+  const lastName = update.message.from?.last_name || "";
+  
 }
 
   if (text === "/start" || text === "⬅️ Volver") {
