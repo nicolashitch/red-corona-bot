@@ -112,6 +112,98 @@ export default async function handler(req, res) {
   }
 
   if (text === "🎁 Beneficios" || text === "/beneficios" || text === "🎁 Reclamar Bonos") {
+  await sendMessage(
+    chatId,
+    "🎁 Seleccioná el beneficio que querés consultar:",
+    bonusesMenu()
+  );
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "🎉 Bono de Bienvenida") {
+  await sendMessage(
+    chatId,
+    "🎉 Bono de Bienvenida\n\nUna vez que tu usuario esté habilitado podés solicitar este beneficio.",
+    bonusesMenu()
+  );
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "🤝 Recomendación") {
+  await sendMessage(
+    chatId,
+    "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳",
+    bonusesMenu()
+  );
+
+  await sendMessage(
+    ADMIN_ID,
+    `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
+
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "💎 Fidelidad") {
+  await sendMessage(
+    chatId,
+    "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.",
+    bonusesMenu()
+  );
+
+  await sendMessage(
+    ADMIN_ID,
+    `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
+
+  return res.status(200).json({ ok: true });
+}
+  await sendMessage(
+    chatId,
+    "🎁 Seleccioná el beneficio que querés consultar:",
+    bonusesMenu()
+  );
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "🎉 Bono de Bienvenida") {
+  await sendMessage(
+    chatId,
+    "🎉 Bono de Bienvenida\n\nUna vez que tu usuario esté habilitado podés solicitar este beneficio.",
+    bonusesMenu()
+  );
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "🤝 Recomendación") {
+  await sendMessage(
+    chatId,
+    "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳",
+    bonusesMenu()
+  );
+
+  await sendMessage(
+    ADMIN_ID,
+    `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
+
+  return res.status(200).json({ ok: true });
+}
+
+if (text === "💎 Fidelidad") {
+  await sendMessage(
+    chatId,
+    "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.",
+    bonusesMenu()
+  );
+
+  await sendMessage(
+    ADMIN_ID,
+    `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
+
+  return res.status(200).json({ ok: true });
+}
     await sendMessage(
       chatId,
       "🎁 <b>Beneficios disponibles</b>\n\n🎉 Bono Bienvenida: 25%\n🤝 Bono Recomendación: 20%\n💎 Bono Fidelidad: 25%\n\nPronto vamos a activar el reclamo automático.",
@@ -187,17 +279,27 @@ export default async function handler(req, res) {
       `Username: @${username}\n` +
       `Nombre Telegram: ${firstName} ${lastName}`;
 
-    await sendMessage(ADMIN_ID, adminMessage);
+   await sendMessage(ADMIN_ID, adminMessage);
 
-    await sendMessage(
-      chatId,
-      "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.",
-      afterRegisterMenu()
-    );
+await sendMessage(
+  chatId,
+  "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.",
+  afterRegisterMenu()
+);
 
-    return res.status(200).json({ ok: true });
-  }
-
-  await sendMessage(chatId, "Seleccioná una opción del menú:", mainMenu());
-  return res.status(200).json({ ok: true });
+return res.status(200).json({ ok: true });
+}
+function bonusesMenu() {
+  return {
+    keyboard: [
+      ["🎉 Bono de Bienvenida"],
+      ["🤝 Recomendación"],
+      ["💎 Fidelidad"],
+      ["⬅️ Volver"]
+    ],
+    resize_keyboard: true
+  };
+}
+await sendMessage(chatId, "Seleccioná una opción del menú:", mainMenu());
+return res.status(200).json({ ok: true });
 }
