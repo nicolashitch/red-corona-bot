@@ -72,33 +72,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("Red Corona Bot Online");
   }
-if (update.message.photo || update.message.document) {
-  await sendMessage(
-    ADMIN_ID,
-    `📎 <b>COMPROBANTE RECIBIDO</b>
 
-ID: ${chatId}
-Username: @${username}
-Nombre: ${firstName} ${lastName}`,
-    {
-      inline_keyboard: [
-        [
-          {
-            text: "✅ Confirmar carga",
-            callback_data: `confirmar_carga_${chatId}`
-          }
-        ]
-      ]
-    }
-  );
-
-  await sendMessage(
-    chatId,
-    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
-  );
-
-  return res.status(200).json({ ok: true });
-}
   }
 
   const chatId = update.message.chat.id;
@@ -108,7 +82,19 @@ Nombre: ${firstName} ${lastName}`,
   const lastName = update.message.from?.last_name || "";
   
 }
+if (update.message.photo || update.message.document) {
+  await sendMessage(
+    ADMIN_ID,
+    `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+  );
 
+  await sendMessage(
+    chatId,
+    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
+  );
+
+  return res.status(200).json({ ok: true });
+}
   if (text === "/start" || text === "⬅️ Volver") {
     await sendMessage(
       ADMIN_ID,
