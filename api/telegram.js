@@ -105,9 +105,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  if (text === "📢 Canal Oficial" || text === "/canal") {
-    await sendMessage(chatId, "📢 Canal oficial:\n\nPegá acá el link de tu canal cuando lo tengas listo.");
-    return res.status(200).json({ ok: true });
+  await sendMessage(
+  chatId,
+  "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet"
+);
   }
 
   if (text === "🎁 Beneficios" || text === "/beneficios" || text === "🎁 Reclamar Bonos") {
