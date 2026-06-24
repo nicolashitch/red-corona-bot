@@ -37,9 +37,9 @@ function mainMenu() {
 function platformMenu() {
   return {
     keyboard: [
-      ["Bet Space"],
-      ["Ganamosnet Org"],
-      ["Zeus (multi)"],
+      ["💫 Bet Space"],
+      ["🌟 Ganamosnet Org"],
+      ["⚡️ Zeus (multi)"],
       ["⬅️ Volver"]
     ],
     resize_keyboard: true
@@ -64,6 +64,10 @@ export default async function handler(req, res) {
   const lastName = update.message.from?.last_name || "";
 
   if (text === "/start" || text === "⬅️ Volver") {
+    await sendMessage(
+  ADMIN_ID,
+  `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+);
     sessions[chatId] = {};
     await sendMessage(
       chatId,
@@ -74,6 +78,10 @@ export default async function handler(req, res) {
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
+    await sendMessage(
+  ADMIN_ID,
+  `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+);
     sessions[chatId] = { step: "name" };
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
