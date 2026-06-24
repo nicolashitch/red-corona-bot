@@ -9,15 +9,11 @@ async function sendMessage(chatId, text, keyboard = null) {
     parse_mode: "HTML"
   };
 
-  if (keyboard) {
-    body.reply_markup = keyboard;
-  }
+  if (keyboard) body.reply_markup = keyboard;
 
   await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
 }
@@ -46,6 +42,18 @@ function platformMenu() {
   };
 }
 
+function afterRegisterMenu() {
+  return {
+    keyboard: [
+      ["📢 Canal Oficial"],
+      ["🎁 Reclamar Bonos"],
+      ["⭐ Acceso VIP"],
+      ["⬅️ Volver"]
+    ],
+    resize_keyboard: true
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("Red Corona Bot Online");
@@ -65,24 +73,29 @@ export default async function handler(req, res) {
 
   if (text === "/start" || text === "⬅️ Volver") {
     await sendMessage(
-  ADMIN_ID,
-  `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-);
+      ADMIN_ID,
+      `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+    );
+
     sessions[chatId] = {};
+
     await sendMessage(
       chatId,
       "👑 <b>Bienvenido a Red Corona Bett</b>\n\nSelecciona una opción:",
       mainMenu()
     );
+
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
     await sendMessage(
-  ADMIN_ID,
-  `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-);
+      ADMIN_ID,
+      `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+    );
+
     sessions[chatId] = { step: "name" };
+
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
   }
@@ -93,15 +106,31 @@ export default async function handler(req, res) {
   }
 
   if (text === "📢 Canal Oficial" || text === "/canal") {
-    await sendMessage(chatId, "Canal oficial:\n\nPegá acá el link de tu canal cuando lo tengas listo.");
+    await sendMessage(chatId, "📢 Canal oficial:\n\nPegá acá el link de tu canal cuando lo tengas listo.");
     return res.status(200).json({ ok: true });
   }
 
-  if (text === "🎁 Beneficios" || text === "/beneficios") {
+  if (text === "🎁 Beneficios" || text === "/beneficios" || text === "🎁 Reclamar Bonos") {
     await sendMessage(
       chatId,
-      "🎁 <b>Beneficios Red Corona Bett</b>\n\n✅ Atención personalizada\n✅ Acceso rápido\n✅ Canal privado\n✅ Soporte disponible"
+      "🎁 <b>Beneficios disponibles</b>\n\n🎉 Bono Bienvenida: 25%\n🤝 Bono Recomendación: 20%\n💎 Bono Fidelidad: 25%\n\nPronto vamos a activar el reclamo automático.",
+      afterRegisterMenu()
     );
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text === "⭐ Acceso VIP") {
+    await sendMessage(
+      ADMIN_ID,
+      `⭐ <b>SOLICITUD VIP</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+    );
+
+    await sendMessage(
+      chatId,
+      "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.",
+      afterRegisterMenu()
+    );
+
     return res.status(200).json({ ok: true });
   }
 
@@ -112,16 +141,12 @@ export default async function handler(req, res) {
     session.step = "platform";
     sessions[chatId] = session;
 
-    await sendMessage(
-      chatId,
-      "Perfecto. Ahora elegí la plataforma:",
-      platformMenu()
-    );
+    await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (session.step === "platform") {
-    const platforms = ["Bet Space", "Ganamosnet Org", "Zeus (multi)"];
+    const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
 
     if (!platforms.includes(text)) {
       await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
@@ -165,18 +190,13 @@ export default async function handler(req, res) {
 
     await sendMessage(
       chatId,
-      "✅ Solicitud recibida.\n\nUn administrador va a preparar tu acceso y te contactará por este chat.",
-      mainMenu()
+      "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.",
+      afterRegisterMenu()
     );
 
     return res.status(200).json({ ok: true });
   }
 
-  await sendMessage(
-    chatId,
-    "Seleccioná una opción del menú:",
-    mainMenu()
-  );
-
+  await sendMessage(chatId, "Seleccioná una opción del menú:", mainMenu());
   return res.status(200).json({ ok: true });
 }
