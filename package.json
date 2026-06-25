@@ -4,6 +4,7 @@
   "description": "Telegram Bot Red Corona",
   "main": "api/telegram.js",
   "dependencies": {
+    "googleapis": "^144.0.0",
     "node-fetch": "^3.3.2"
   }
 }
