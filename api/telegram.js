@@ -103,6 +103,23 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ ok: true });
     }
+    if (data.startsWith("retiro_realizado_")) {
+  const userId = data.replace("retiro_realizado_", "");
+
+  sessions[userId] = { step: "withdraw_cvu" };
+
+  await sendMessage(
+    userId,
+    "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
+  );
+
+  await sendMessage(
+    adminChatId,
+    "✅ Se solicitó CVU/CBU al usuario."
+  );
+
+  return res.status(200).json({ ok: true });
+}
   }
 
   if (!update.message) {
@@ -297,16 +314,27 @@ if (session.step === "withdraw_amount") {
   sessions[chatId] = session;
 
   await sendMessage(
-    ADMIN_ID,
-    `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
-    `👤 Usuario: ${session.withdrawUser}\n` +
-    `💰 Monto: ${session.withdrawAmount}\n` +
-    `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
-    `Telegram:\n` +
-    `ID: ${chatId}\n` +
-    `Username: @${username}\n` +
-    `Nombre Telegram: ${firstName} ${lastName}\n\n` +
-    `Cuando retires las fichas, usá:\n/retiroconfirmado ${chatId}`
+  ADMIN_ID,
+  `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
+  `👤 Usuario: ${session.withdrawUser}\n` +
+  `💰 Monto: ${session.withdrawAmount}\n` +
+  `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
+  `Telegram:\n` +
+  `ID: ${chatId}\n` +
+  `Username: @${username}\n` +
+  `Nombre Telegram: ${firstName} ${lastName}\n\n` +
+  `Cuando retires las fichas, tocá el botón de abajo.`,
+  {
+    inline_keyboard: [
+      [
+        {
+          text: "💸 Retiro realizado",
+          callback_data: `retiro_realizado_${chatId}`
+        }
+      ]
+    ]
+  }
+);
   );
 
   await sendMessage(
