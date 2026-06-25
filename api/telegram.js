@@ -23,6 +23,7 @@ function mainMenu() {
     keyboard: [
       ["🎮 Crear Usuario"],
       ["💳 Cargar"],
+      ["🥳💸 Gané y quiero retirar"],
       ["👨‍💼 Hablar con un ADM"],
       ["📢 Canal Oficial"],
       ["🎁 Beneficios"]
@@ -50,6 +51,7 @@ function afterRegisterMenu() {
       ["🎁 Reclamar Bonos"],
       ["⭐ Acceso VIP"],
       ["💳 Cargar"],
+      ["🥳💸 Gané y quiero retirar"],
       ["⬅️ Volver"]
     ],
     resize_keyboard: true
@@ -117,10 +119,7 @@ export default async function handler(req, res) {
     const parts = text.split(" ");
 
     if (parts.length < 5) {
-      await sendMessage(
-        ADMIN_ID,
-        "Formato incorrecto.\n\nUsá:\n/enviarusuario ID USUARIO CONTRASEÑA LINK"
-      );
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/enviarusuario ID USUARIO CONTRASEÑA LINK");
       return res.status(200).json({ ok: true });
     }
 
@@ -138,52 +137,50 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
+  if (text.startsWith("/retiroconfirmado") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/retiroconfirmado ID");
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+    sessions[userId] = { step: "withdraw_cvu" };
+
+    await sendMessage(
+      userId,
+      "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
+    );
+
+    await sendMessage(ADMIN_ID, "✅ Se solicitó CVU/CBU al usuario.");
+    return res.status(200).json({ ok: true });
+  }
+
   if (update.message.photo || update.message.document) {
     await sendMessage(
       ADMIN_ID,
       `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
       {
-        inline_keyboard: [
-          [
-            {
-              text: "✅ Confirmar carga",
-              callback_data: `confirmar_carga_${chatId}`
-            }
-          ]
-        ]
+        inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]]
       }
     );
 
-    await sendMessage(
-      chatId,
-      "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
-    );
-
+    await sendMessage(chatId, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "/start" || text === "⬅️ Volver") {
-    await sendMessage(
-      ADMIN_ID,
-      `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-    );
+    await sendMessage(ADMIN_ID, `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
 
     sessions[chatId] = {};
 
-    await sendMessage(
-      chatId,
-      "👑 <b>Bienvenido a Red Corona Bett</b>\n\nSelecciona una opción:",
-      mainMenu()
-    );
-
+    await sendMessage(chatId, "👑 <b>Bienvenido a Red Corona Bett</b>\n\nSelecciona una opción:", mainMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
-    await sendMessage(
-      ADMIN_ID,
-      `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-    );
+    await sendMessage(ADMIN_ID, `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
 
     sessions[chatId] = { step: "name" };
 
@@ -193,8 +190,13 @@ export default async function handler(req, res) {
 
   if (text === "💳 Cargar") {
     sessions[chatId] = { step: "load_user" };
-
     await sendMessage(chatId, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text === "🥳💸 Gané y quiero retirar") {
+    sessions[chatId] = { step: "withdraw_user" };
+    await sendMessage(chatId, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
 
@@ -214,11 +216,7 @@ export default async function handler(req, res) {
   }
 
   if (text === "🎉 Bono de Bienvenida") {
-    await sendMessage(
-      chatId,
-      "🎉 Bono de Bienvenida\n\nUna vez que tu usuario esté habilitado podés solicitar este beneficio.",
-      bonusesMenu()
-    );
+    await sendMessage(chatId, "🎉 Bono de Bienvenida\n\nUna vez que tu usuario esté habilitado podés solicitar este beneficio.", bonusesMenu());
     return res.status(200).json({ ok: true });
   }
 
@@ -229,34 +227,19 @@ export default async function handler(req, res) {
       bonusesMenu()
     );
 
-    await sendMessage(
-      ADMIN_ID,
-      `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-    );
-
+    await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💎 Fidelidad") {
-    await sendMessage(
-      chatId,
-      "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.",
-      bonusesMenu()
-    );
+    await sendMessage(chatId, "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.", bonusesMenu());
 
-    await sendMessage(
-      ADMIN_ID,
-      `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-    );
-
+    await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "⭐ Acceso VIP") {
-    await sendMessage(
-      ADMIN_ID,
-      `⭐ <b>SOLICITUD VIP</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
-    );
+    await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
 
     await sendMessage(
       chatId,
@@ -268,6 +251,76 @@ export default async function handler(req, res) {
   }
 
   const session = sessions[chatId] || {};
+
+  if (session.step === "withdraw_user") {
+    session.withdrawUser = text;
+    session.step = "withdraw_platform";
+    sessions[chatId] = session;
+
+    await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
+    return res.status(200).json({ ok: true });
+  }
+
+  if (session.step === "withdraw_platform") {
+    const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
+
+    if (!platforms.includes(text)) {
+      await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
+      return res.status(200).json({ ok: true });
+    }
+
+    session.withdrawPlatform = text;
+    session.step = "withdraw_waiting_admin";
+    sessions[chatId] = session;
+
+    await sendMessage(
+      ADMIN_ID,
+      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n👤 Usuario: ${session.withdrawUser}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, usá:\n/retiroconfirmado ${chatId}`
+    );
+
+    await sendMessage(
+      chatId,
+      "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario y retirará las fichas de la plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación."
+    );
+
+    return res.status(200).json({ ok: true });
+  }
+
+  if (session.step === "withdraw_cvu") {
+    session.withdrawCvu = text;
+    session.step = "withdraw_holder";
+    sessions[chatId] = session;
+
+    await sendMessage(chatId, "Perfecto ✅\n\nAhora enviame el titular de la cuenta.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (session.step === "withdraw_holder") {
+    session.withdrawHolder = text;
+    session.step = "withdraw_bank";
+    sessions[chatId] = session;
+
+    await sendMessage(chatId, "Bien ✅\n\nAhora enviame el nombre del banco o billetera.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (session.step === "withdraw_bank") {
+    session.withdrawBank = text;
+    session.step = "withdraw_done";
+    sessions[chatId] = session;
+
+    await sendMessage(
+      ADMIN_ID,
+      `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
+    );
+
+    await sendMessage(
+      chatId,
+      "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te enviará el comprobante por este chat."
+    );
+
+    return res.status(200).json({ ok: true });
+  }
 
   if (session.step === "load_user") {
     session.loadUser = text;
@@ -299,10 +352,11 @@ export default async function handler(req, res) {
       chatId,
       `💳 <b>Datos para cargar</b>
 
-🏦 Alias: redcoronabet7
+🏦 Alias:
+<code>redcoronabet7</code>
 
 🔢 CVU:
-000177500393009854128
+<code>000177500393009854128</code>
 
 👤 Titular:
 Sonia Raquel Gutierrez
@@ -370,14 +424,7 @@ Sonia Raquel Gutierrez
       ADMIN_ID,
       adminMessage,
       {
-        inline_keyboard: [
-          [
-            {
-              text: "📩 Enviar usuario",
-              callback_data: `enviar_usuario_${chatId}`
-            }
-          ]
-        ]
+        inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]]
       }
     );
 
