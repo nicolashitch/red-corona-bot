@@ -13,6 +13,10 @@ function getStartSource(text) {
   return parts[1] || "direct";
 }
 
+function nowDate() {
+  return new Date().toLocaleString("es-AR");
+}
+
 async function sendMessage(chatId, text, keyboard = null) {
   const body = { chat_id: chatId, text, parse_mode: "HTML" };
   if (keyboard) body.reply_markup = keyboard;
@@ -24,24 +28,28 @@ async function sendMessage(chatId, text, keyboard = null) {
   });
 }
 
+function getSheetsClient() {
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+  });
+
+  return google.sheets({ version: "v4", auth });
+}
+
 async function saveUserToSheet(data) {
   try {
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-    });
-
-    const sheets = google.sheets({ version: "v4", auth });
+    const sheets = getSheetsClient();
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: "A:J",
+      range: "A:N",
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
-          new Date().toLocaleString("es-AR"),
+          nowDate(),
           data.origen,
           data.telegramId,
           data.username,
@@ -50,16 +58,77 @@ async function saveUserToSheet(data) {
           data.plataforma,
           data.telefono,
           data.pais,
-          data.estado
+          data.estado,
+          "",
+          "",
+          "",
+          ""
         ]]
       }
     });
   } catch (error) {
     console.error("Error guardando en Google Sheets:", error);
-await sendMessage(
-  ADMIN_ID,
-  "⚠️ Error guardando usuario en Google Sheets. El bot sigue funcionando."
-);
+    await sendMessage(
+      ADMIN_ID,
+      "⚠️ Error guardando usuario en Google Sheets. El bot sigue funcionando."
+    );
+  }
+}
+
+async function findUserRowByTelegramId(telegramId) {
+  const sheets = getSheetsClient();
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+    range: "A:N"
+  });
+
+  const rows = response.data.values || [];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(telegramId)) {
+      return {
+        rowNumber: i + 1,
+        row: rows[i]
+      };
+    }
+  }
+
+  return null;
+}
+
+async function updateUserStatus(telegramId, status, extras = {}) {
+  try {
+    const sheets = getSheetsClient();
+    const found = await findUserRowByTelegramId(telegramId);
+
+    if (!found) {
+      await sendMessage(ADMIN_ID, `⚠️ No encontré el usuario ${telegramId} en Google Sheets.`);
+      return false;
+    }
+
+    const row = found.row;
+
+    const estado = status || row[9] || "";
+    const primeraCarga = extras.primeraCarga ?? row[10] ?? "";
+    const fechaCarga = extras.fechaCarga ?? row[11] ?? "";
+    const primerRetiro = extras.primerRetiro ?? row[12] ?? "";
+    const fechaRetiro = extras.fechaRetiro ?? row[13] ?? "";
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: `J${found.rowNumber}:N${found.rowNumber}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[estado, primeraCarga, fechaCarga, primerRetiro, fechaRetiro]]
+      }
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error actualizando estado en Google Sheets:", error);
+    await sendMessage(ADMIN_ID, "⚠️ Error actualizando estado en Google Sheets.");
+    return false;
   }
 }
 
@@ -128,8 +197,13 @@ export default async function handler(req, res) {
 
     if (data.startsWith("confirmar_carga_")) {
       const userId = data.replace("confirmar_carga_", "");
+
+      await updateUserStatus(userId, "Cargó", {
+        fechaCarga: nowDate()
+      });
+
       await sendMessage(userId, "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias.");
-      await sendMessage(adminChatId, "✅ Confirmación enviada al usuario.");
+      await sendMessage(adminChatId, "✅ Confirmación enviada al usuario y estado actualizado en Sheets.");
       return res.status(200).json({ ok: true });
     }
 
@@ -144,6 +218,8 @@ export default async function handler(req, res) {
       const oldSession = sessions[userId] || {};
       sessions[userId] = { ...oldSession, step: "withdraw_cvu" };
 
+      await updateUserStatus(userId, "Retiro solicitado");
+
       await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
       await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
       return res.status(200).json({ ok: true });
@@ -151,8 +227,13 @@ export default async function handler(req, res) {
 
     if (data.startsWith("pago_enviado_")) {
       const userId = data.replace("pago_enviado_", "");
+
+      await updateUserStatus(userId, "Retiro pagado", {
+        fechaRetiro: nowDate()
+      });
+
       await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
-      await sendMessage(adminChatId, "✅ Aviso de pago enviado al usuario.");
+      await sendMessage(adminChatId, "✅ Aviso de pago enviado al usuario y estado actualizado en Sheets.");
       return res.status(200).json({ ok: true });
     }
   }
@@ -180,8 +261,84 @@ export default async function handler(req, res) {
     const pass = parts[3];
     const link = parts.slice(4).join(" ");
 
+    await updateUserStatus(userId, "Usuario enviado");
+
     await sendMessage(userId, `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`);
-    await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente.");
+    await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente y estado actualizado en Sheets.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/cargo") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/cargo ID MONTO\n\nEjemplo:\n/cargo 8291674623 50000");
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+    const amount = parts.slice(2).join(" ") || "";
+
+    await updateUserStatus(userId, "Cargó", {
+      primeraCarga: amount,
+      fechaCarga: nowDate()
+    });
+
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Cargó.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/retiro") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/retiro ID MONTO\n\nEjemplo:\n/retiro 8291674623 78000");
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+    const amount = parts.slice(2).join(" ") || "";
+
+    await updateUserStatus(userId, "Retiró", {
+      primerRetiro: amount,
+      fechaRetiro: nowDate()
+    });
+
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Retiró.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/perdido") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/perdido ID");
+      return res.status(200).json({ ok: true });
+    }
+
+    await updateUserStatus(parts[1], "Perdido");
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Perdido.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/vip") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/vip ID");
+      return res.status(200).json({ ok: true });
+    }
+
+    await updateUserStatus(parts[1], "VIP");
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: VIP.");
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/bloqueado") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/bloqueado ID");
+      return res.status(200).json({ ok: true });
+    }
+
+    await updateUserStatus(parts[1], "Bloqueado");
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Bloqueado.");
     return res.status(200).json({ ok: true });
   }
 
@@ -195,6 +352,8 @@ export default async function handler(req, res) {
     const userId = parts[1];
     const oldSession = sessions[userId] || {};
     sessions[userId] = { ...oldSession, step: "withdraw_cvu" };
+
+    await updateUserStatus(userId, "Retiro solicitado");
 
     await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
     await sendMessage(ADMIN_ID, "✅ Se solicitó CVU/CBU al usuario.");
@@ -223,12 +382,18 @@ export default async function handler(req, res) {
     if (String(chatId) === ADMIN_ID && adminSession?.step === "waiting_payment_receipt") {
       const userId = adminSession.paymentUserId;
 
+      await updateUserStatus(userId, "Retiro pagado", {
+        fechaRetiro: nowDate()
+      });
+
       await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
       await sendMessage(ADMIN_ID, "✅ Aviso de pago enviado al usuario.\n\nAhora reenviá manualmente el comprobante si querés que también vea la imagen.");
 
       sessions[ADMIN_ID] = {};
       return res.status(200).json({ ok: true });
     }
+
+    await updateUserStatus(chatId, "Comprobante recibido");
 
     await sendMessage(
       ADMIN_ID,
@@ -346,6 +511,11 @@ export default async function handler(req, res) {
     session.step = "withdraw_waiting_admin";
     sessions[chatId] = session;
 
+    await updateUserStatus(chatId, "Retiro solicitado", {
+      primerRetiro: session.withdrawAmount,
+      fechaRetiro: nowDate()
+    });
+
     await sendMessage(
       ADMIN_ID,
       `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\nOrigen: ${sessionSourceLabel}\n👤 Usuario: ${session.withdrawUser}\n💰 Monto: ${session.withdrawAmount}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, tocá el botón de abajo.`,
@@ -406,6 +576,8 @@ export default async function handler(req, res) {
     session.loadPlatform = text;
     session.step = "waiting_receipt";
     sessions[chatId] = session;
+
+    await updateUserStatus(chatId, "Carga solicitada");
 
     await sendMessage(
       ADMIN_ID,
