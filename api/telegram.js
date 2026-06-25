@@ -1,5 +1,6 @@
-const ADMIN_ID = "8291674623";
+import { google } from "googleapis";
 
+const ADMIN_ID = "8291674623";
 const sessions = {};
 
 function getSourceLabel(source) {
@@ -21,6 +22,42 @@ async function sendMessage(chatId, text, keyboard = null) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+}
+
+async function saveUserToSheet(data) {
+  try {
+    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+    });
+
+    const sheets = google.sheets({ version: "v4", auth });
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: "Hoja 1!A:J",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[
+          new Date().toLocaleString("es-AR"),
+          data.origen,
+          data.telegramId,
+          data.username,
+          data.nombreTelegram,
+          data.nombre,
+          data.plataforma,
+          data.telefono,
+          data.pais,
+          data.estado
+        ]]
+      }
+    });
+  } catch (error) {
+    console.error("Error guardando en Google Sheets:", error);
+    await sendMessage(ADMIN_ID, "⚠️ Error guardando usuario en Google Sheets. El bot sigue funcionando.");
+  }
 }
 
 function mainMenu() {
@@ -438,9 +475,21 @@ Sonia Raquel Gutierrez
       { inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]] }
     );
 
+    await saveUserToSheet({
+      origen: sessionSourceLabel,
+      telegramId: chatId,
+      username: `@${username}`,
+      nombreTelegram: `${firstName} ${lastName}`,
+      nombre: session.name,
+      plataforma: session.platform,
+      telefono: session.phone,
+      pais: session.country,
+      estado: "Registrado"
+    });
+
     await sendMessage(
-  chatId,
-  `✅ Solicitud recibida.
+      chatId,
+      `✅ Solicitud recibida.
 
 Tu acceso está siendo preparado por un administrador.
 
@@ -460,7 +509,8 @@ Sonia Raquel Gutierrez
 ⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.
 
 📢 Mientras tanto podés unirte al canal oficial o solicitar acceso VIP.`
-);
+    );
+
     return res.status(200).json({ ok: true });
   }
 
