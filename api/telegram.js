@@ -117,6 +117,21 @@ export default async function handler(req, res) {
       await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
       return res.status(200).json({ ok: true });
     }
+    if (data.startsWith("pago_enviado_")) {
+  const userId = data.replace("pago_enviado_", "");
+
+  await sendMessage(
+    userId,
+    "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias."
+  );
+
+  await sendMessage(
+    adminChatId,
+    "✅ Aviso de pago enviado al usuario."
+  );
+
+  return res.status(200).json({ ok: true });
+}
   }
 
   if (!update.message) {
