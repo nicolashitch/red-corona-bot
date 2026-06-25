@@ -339,7 +339,11 @@ export default async function handler(req, res) {
       ADMIN_ID,
       `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
     );
-
+await sendMessage(
+  ADMIN_ID,
+  "📎 Cuando realices el pago, usá:\n\n" +
+  `/comprobantepago ${chatId}`
+);
     await sendMessage(chatId, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te enviará el comprobante por este chat.");
     return res.status(200).json({ ok: true });
   }
