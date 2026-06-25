@@ -2,6 +2,16 @@ const ADMIN_ID = "8291674623";
 
 const sessions = {};
 
+function getSourceLabel(source) {
+  if (source === "meta") return "🟢 META ADS";
+  return "⚪ Orgánico / Directo";
+}
+
+function getStartSource(text) {
+  const parts = text.split(" ");
+  return parts[1] || "direct";
+}
+
 async function sendMessage(chatId, text, keyboard = null) {
   const body = { chat_id: chatId, text, parse_mode: "HTML" };
   if (keyboard) body.reply_markup = keyboard;
@@ -91,7 +101,9 @@ export default async function handler(req, res) {
 
     if (data.startsWith("retiro_realizado_")) {
       const userId = data.replace("retiro_realizado_", "");
-      sessions[userId] = { step: "withdraw_cvu" };
+      const oldSession = sessions[userId] || {};
+      sessions[userId] = { ...oldSession, step: "withdraw_cvu" };
+
       await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
       await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
       return res.status(200).json({ ok: true });
@@ -112,6 +124,9 @@ export default async function handler(req, res) {
   const username = update.message.from?.username || "Sin username";
   const firstName = update.message.from?.first_name || "";
   const lastName = update.message.from?.last_name || "";
+  const currentSession = sessions[chatId] || {};
+  const source = currentSession.source || "direct";
+  const sourceLabel = getSourceLabel(source);
 
   if (text.startsWith("/enviarusuario") && String(chatId) === ADMIN_ID) {
     const parts = text.split(" ");
@@ -138,7 +153,8 @@ export default async function handler(req, res) {
     }
 
     const userId = parts[1];
-    sessions[userId] = { step: "withdraw_cvu" };
+    const oldSession = sessions[userId] || {};
+    sessions[userId] = { ...oldSession, step: "withdraw_cvu" };
 
     await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
     await sendMessage(ADMIN_ID, "✅ Se solicitó CVU/CBU al usuario.");
@@ -176,7 +192,7 @@ export default async function handler(req, res) {
 
     await sendMessage(
       ADMIN_ID,
-      `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
+      `📎 <b>COMPROBANTE RECIBIDO</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
       { inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]] }
     );
 
@@ -184,28 +200,40 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  if (text === "/start" || text === "⬅️ Volver") {
-    await sendMessage(ADMIN_ID, `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
-    sessions[chatId] = {};
+  if (text.startsWith("/start") || text === "⬅️ Volver") {
+    const startSource = text.startsWith("/start") ? getStartSource(text) : source;
+    const startSourceLabel = getSourceLabel(startSource);
+
+    await sendMessage(
+      ADMIN_ID,
+      `👀 <b>BOT START</b>\n\nOrigen: ${startSourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+    );
+
+    sessions[chatId] = { source: startSource };
+
     await sendMessage(chatId, "👑 <b>Bienvenido a Red Corona Bett</b>\n\nSelecciona una opción:", mainMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
-    await sendMessage(ADMIN_ID, `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
-    sessions[chatId] = { step: "name" };
+    await sendMessage(
+      ADMIN_ID,
+      `🎮 <b>REGISTRO INICIADO</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
+    );
+
+    sessions[chatId] = { step: "name", source };
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💳 Cargar") {
-    sessions[chatId] = { step: "load_user" };
+    sessions[chatId] = { step: "load_user", source };
     await sendMessage(chatId, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🥳💸 Gané y quiero retirar") {
-    sessions[chatId] = { step: "withdraw_user" };
+    sessions[chatId] = { step: "withdraw_user", source };
     await sendMessage(chatId, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
@@ -232,23 +260,24 @@ export default async function handler(req, res) {
 
   if (text === "🤝 Recomendación") {
     await sendMessage(chatId, "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳", bonusesMenu());
-    await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💎 Fidelidad") {
     await sendMessage(chatId, "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.", bonusesMenu());
-    await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "⭐ Acceso VIP") {
-    await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     await sendMessage(chatId, "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.", afterRegisterMenu());
     return res.status(200).json({ ok: true });
   }
 
   const session = sessions[chatId] || {};
+  const sessionSourceLabel = getSourceLabel(session.source || source);
 
   if (session.step === "withdraw_user") {
     session.withdrawUser = text;
@@ -279,7 +308,7 @@ export default async function handler(req, res) {
 
     await sendMessage(
       ADMIN_ID,
-      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n👤 Usuario: ${session.withdrawUser}\n💰 Monto: ${session.withdrawAmount}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, tocá el botón de abajo.`,
+      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\nOrigen: ${sessionSourceLabel}\n👤 Usuario: ${session.withdrawUser}\n💰 Monto: ${session.withdrawAmount}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, tocá el botón de abajo.`,
       { inline_keyboard: [[{ text: "💸 Retiro realizado", callback_data: `retiro_realizado_${chatId}` }]] }
     );
 
@@ -310,7 +339,7 @@ export default async function handler(req, res) {
 
     await sendMessage(
       ADMIN_ID,
-      `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`,
+      `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nOrigen: ${sessionSourceLabel}\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`,
       { inline_keyboard: [[{ text: "✅ Pago enviado", callback_data: `pago_enviado_${chatId}` }]] }
     );
 
@@ -338,7 +367,10 @@ export default async function handler(req, res) {
     session.step = "waiting_receipt";
     sessions[chatId] = session;
 
-    await sendMessage(ADMIN_ID, `💳 <b>SOLICITUD DE CARGA</b>\n\n👤 Usuario: ${session.loadUser}\n🎮 Plataforma: ${session.loadPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`);
+    await sendMessage(
+      ADMIN_ID,
+      `💳 <b>SOLICITUD DE CARGA</b>\n\nOrigen: ${sessionSourceLabel}\n👤 Usuario: ${session.loadUser}\n🎮 Plataforma: ${session.loadPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
+    );
 
     await sendMessage(
       chatId,
@@ -398,7 +430,7 @@ Sonia Raquel Gutierrez
     sessions[chatId] = session;
 
     const adminMessage =
-      `🚨 <b>NUEVA SOLICITUD DE USUARIO</b>\n\n👤 Nombre: ${session.name}\n🎮 Plataforma: ${session.platform}\n📞 Teléfono: ${session.phone}\n🌍 País: ${session.country}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`;
+      `🚨 <b>NUEVA SOLICITUD DE USUARIO</b>\n\nOrigen: ${sessionSourceLabel}\n👤 Nombre: ${session.name}\n🎮 Plataforma: ${session.platform}\n📞 Teléfono: ${session.phone}\n🌍 País: ${session.country}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`;
 
     await sendMessage(
       ADMIN_ID,
