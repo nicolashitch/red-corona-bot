@@ -3,12 +3,7 @@ const ADMIN_ID = "8291674623";
 const sessions = {};
 
 async function sendMessage(chatId, text, keyboard = null) {
-  const body = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML"
-  };
-
+  const body = { chat_id: chatId, text, parse_mode: "HTML" };
   if (keyboard) body.reply_markup = keyboard;
 
   await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -83,60 +78,34 @@ export default async function handler(req, res) {
 
     if (data.startsWith("confirmar_carga_")) {
       const userId = data.replace("confirmar_carga_", "");
-
-      await sendMessage(
-        userId,
-        "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias."
-      );
-
+      await sendMessage(userId, "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias.");
       await sendMessage(adminChatId, "✅ Confirmación enviada al usuario.");
       return res.status(200).json({ ok: true });
     }
 
     if (data.startsWith("enviar_usuario_")) {
       const userId = data.replace("enviar_usuario_", "");
-
-      await sendMessage(
-        adminChatId,
-        `📩 Para enviar el usuario, copiá y usá este formato:\n\n/enviarusuario ${userId} USUARIO CONTRASEÑA LINK`
-      );
-
+      await sendMessage(adminChatId, `📩 Para enviar el usuario, copiá y usá este formato:\n\n/enviarusuario ${userId} USUARIO CONTRASEÑA LINK`);
       return res.status(200).json({ ok: true });
     }
 
     if (data.startsWith("retiro_realizado_")) {
       const userId = data.replace("retiro_realizado_", "");
-
       sessions[userId] = { step: "withdraw_cvu" };
-
-      await sendMessage(
-        userId,
-        "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
-      );
-
+      await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
       await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
       return res.status(200).json({ ok: true });
     }
+
     if (data.startsWith("pago_enviado_")) {
-  const userId = data.replace("pago_enviado_", "");
-
-  await sendMessage(
-    userId,
-    "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias."
-  );
-
-  await sendMessage(
-    adminChatId,
-    "✅ Aviso de pago enviado al usuario."
-  );
-
-  return res.status(200).json({ ok: true });
-}
+      const userId = data.replace("pago_enviado_", "");
+      await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
+      await sendMessage(adminChatId, "✅ Aviso de pago enviado al usuario.");
+      return res.status(200).json({ ok: true });
+    }
   }
 
-  if (!update.message) {
-    return res.status(200).json({ ok: true });
-  }
+  if (!update.message) return res.status(200).json({ ok: true });
 
   const chatId = update.message.chat.id;
   const text = update.message.text || "";
@@ -146,7 +115,6 @@ export default async function handler(req, res) {
 
   if (text.startsWith("/enviarusuario") && String(chatId) === ADMIN_ID) {
     const parts = text.split(" ");
-
     if (parts.length < 5) {
       await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/enviarusuario ID USUARIO CONTRASEÑA LINK");
       return res.status(200).json({ ok: true });
@@ -157,101 +125,59 @@ export default async function handler(req, res) {
     const pass = parts[3];
     const link = parts.slice(4).join(" ");
 
-    await sendMessage(
-      userId,
-      `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`
-    );
-
+    await sendMessage(userId, `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`);
     await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente.");
     return res.status(200).json({ ok: true });
   }
 
   if (text.startsWith("/retiroconfirmado") && String(chatId) === ADMIN_ID) {
     const parts = text.split(" ");
-
     if (parts.length < 2) {
       await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/retiroconfirmado ID");
       return res.status(200).json({ ok: true });
     }
-    if (text.startsWith("/comprobantepago") && String(chatId) === ADMIN_ID) {
-  const parts = text.split(" ");
-
-  if (parts.length < 2) {
-    await sendMessage(
-      ADMIN_ID,
-      "Formato incorrecto.\n\nUsá:\n/comprobantepago ID"
-    );
-    return res.status(200).json({ ok: true });
-  }
-
-  const userId = parts[1];
-
-  sessions[ADMIN_ID] = {
-    step: "waiting_payment_receipt",
-    paymentUserId: userId
-  };
-
-  await sendMessage(
-    ADMIN_ID,
-    "Perfecto ✅\n\nAhora enviá la foto o PDF del comprobante de pago."
-  );
-
-  return res.status(200).json({ ok: true });
-}
 
     const userId = parts[1];
     sessions[userId] = { step: "withdraw_cvu" };
 
-    await sendMessage(
-      userId,
-      "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
-    );
-
+    await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
     await sendMessage(ADMIN_ID, "✅ Se solicitó CVU/CBU al usuario.");
     return res.status(200).json({ ok: true });
   }
 
-  if (update.message.photo || update.message.document) {
-  const adminSession = sessions[ADMIN_ID];
+  if (text.startsWith("/comprobantepago") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/comprobantepago ID");
+      return res.status(200).json({ ok: true });
+    }
 
-  if (String(chatId) === ADMIN_ID && adminSession?.step === "waiting_payment_receipt") {
-    const userId = adminSession.paymentUserId;
+    sessions[ADMIN_ID] = {
+      step: "waiting_payment_receipt",
+      paymentUserId: parts[1]
+    };
 
-    await sendMessage(
-      userId,
-      "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias."
-    );
-
-    await sendMessage(
-      ADMIN_ID,
-      "✅ Aviso de pago enviado al usuario.\n\nAhora reenviá manualmente el comprobante si querés que también vea la imagen."
-    );
-
-    sessions[ADMIN_ID] = {};
+    await sendMessage(ADMIN_ID, "Perfecto ✅\n\nAhora enviá la foto o PDF del comprobante de pago.");
     return res.status(200).json({ ok: true });
   }
 
-  await sendMessage(
-    ADMIN_ID,
-    `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
-    {
-      inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]]
+  if (update.message.photo || update.message.document) {
+    const adminSession = sessions[ADMIN_ID];
+
+    if (String(chatId) === ADMIN_ID && adminSession?.step === "waiting_payment_receipt") {
+      const userId = adminSession.paymentUserId;
+
+      await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
+      await sendMessage(ADMIN_ID, "✅ Aviso de pago enviado al usuario.\n\nAhora reenviá manualmente el comprobante si querés que también vea la imagen.");
+
+      sessions[ADMIN_ID] = {};
+      return res.status(200).json({ ok: true });
     }
-  );
 
-  await sendMessage(
-    chatId,
-    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
-  );
-
-  return res.status(200).json({ ok: true });
-}
     await sendMessage(
       ADMIN_ID,
       `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
-      {
-        inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]]
-      }
+      { inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]] }
     );
 
     await sendMessage(chatId, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
@@ -334,7 +260,6 @@ export default async function handler(req, res) {
 
   if (session.step === "withdraw_platform") {
     const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
-
     if (!platforms.includes(text)) {
       await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
       return res.status(200).json({ ok: true });
@@ -343,7 +268,6 @@ export default async function handler(req, res) {
     session.withdrawPlatform = text;
     session.step = "withdraw_amount";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuánto querés retirar?");
     return res.status(200).json({ ok: true });
   }
@@ -355,18 +279,8 @@ export default async function handler(req, res) {
 
     await sendMessage(
       ADMIN_ID,
-      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
-      `👤 Usuario: ${session.withdrawUser}\n` +
-      `💰 Monto: ${session.withdrawAmount}\n` +
-      `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
-      `Telegram:\n` +
-      `ID: ${chatId}\n` +
-      `Username: @${username}\n` +
-      `Nombre Telegram: ${firstName} ${lastName}\n\n` +
-      `Cuando retires las fichas, tocá el botón de abajo.`,
-      {
-        inline_keyboard: [[{ text: "💸 Retiro realizado", callback_data: `retiro_realizado_${chatId}` }]]
-      }
+      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n👤 Usuario: ${session.withdrawUser}\n💰 Monto: ${session.withdrawAmount}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, tocá el botón de abajo.`,
+      { inline_keyboard: [[{ text: "💸 Retiro realizado", callback_data: `retiro_realizado_${chatId}` }]] }
     );
 
     await sendMessage(chatId, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación.");
@@ -396,13 +310,11 @@ export default async function handler(req, res) {
 
     await sendMessage(
       ADMIN_ID,
-      `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
+      `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`,
+      { inline_keyboard: [[{ text: "✅ Pago enviado", callback_data: `pago_enviado_${chatId}` }]] }
     );
-await sendMessage(
-  ADMIN_ID,
-  "📎 Cuando realices el pago, usá:\n\n" +
-  `/comprobantepago ${chatId}`
-);
+
+    await sendMessage(ADMIN_ID, "📎 Cuando realices el pago, usá:\n\n" + `/comprobantepago ${chatId}`);
     await sendMessage(chatId, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te enviará el comprobante por este chat.");
     return res.status(200).json({ ok: true });
   }
@@ -417,7 +329,6 @@ await sendMessage(
 
   if (session.step === "load_platform") {
     const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
-
     if (!platforms.includes(text)) {
       await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
       return res.status(200).json({ ok: true });
@@ -461,7 +372,6 @@ Sonia Raquel Gutierrez
 
   if (session.step === "platform") {
     const platforms = ["💫 Bet Space", "🌟 Ganamosnet Org", "⚡️ Zeus (multi)"];
-
     if (!platforms.includes(text)) {
       await sendMessage(chatId, "Elegí una plataforma usando los botones:", platformMenu());
       return res.status(200).json({ ok: true });
@@ -488,22 +398,12 @@ Sonia Raquel Gutierrez
     sessions[chatId] = session;
 
     const adminMessage =
-      `🚨 <b>NUEVA SOLICITUD DE USUARIO</b>\n\n` +
-      `👤 Nombre: ${session.name}\n` +
-      `🎮 Plataforma: ${session.platform}\n` +
-      `📞 Teléfono: ${session.phone}\n` +
-      `🌍 País: ${session.country}\n\n` +
-      `Telegram:\n` +
-      `ID: ${chatId}\n` +
-      `Username: @${username}\n` +
-      `Nombre Telegram: ${firstName} ${lastName}`;
+      `🚨 <b>NUEVA SOLICITUD DE USUARIO</b>\n\n👤 Nombre: ${session.name}\n🎮 Plataforma: ${session.platform}\n📞 Teléfono: ${session.phone}\n🌍 País: ${session.country}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`;
 
     await sendMessage(
       ADMIN_ID,
       adminMessage,
-      {
-        inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]]
-      }
+      { inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]] }
     );
 
     await sendMessage(chatId, "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.", afterRegisterMenu());
