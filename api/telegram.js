@@ -55,8 +55,29 @@ async function saveUserToSheet(data) {
       }
     });
   } catch (error) {
-    console.error("Error guardando en Google Sheets:", error);
-    await sendMessage(ADMIN_ID, "⚠️ Error guardando usuario en Google Sheets. El bot sigue funcionando.");
+    console.error("Error guardando en Google Sheets:", error?.response?.data || error);
+
+let debugEmail = "No leído";
+let debugSheet = process.env.GOOGLE_SHEETS_ID || "No leído";
+
+try {
+  const debugCredentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+  debugEmail = debugCredentials.client_email;
+} catch {}
+
+await sendMessage(
+  ADMIN_ID,
+  `⚠️ Error guardando usuario en Google Sheets.
+
+Sheet ID usado:
+${debugSheet}
+
+Service account usado:
+${debugEmail}
+
+Error:
+${error?.response?.data?.error?.message || error.message}`
+);
   }
 }
 
