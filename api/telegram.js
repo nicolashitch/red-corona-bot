@@ -37,7 +37,7 @@ async function saveUserToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: "Hoja 1!A:J",
+      range: "A:J",
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
