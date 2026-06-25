@@ -438,7 +438,29 @@ Sonia Raquel Gutierrez
       { inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]] }
     );
 
-    await sendMessage(chatId, "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.", afterRegisterMenu());
+    await sendMessage(
+  chatId,
+  `✅ Solicitud recibida.
+
+Tu acceso está siendo preparado por un administrador.
+
+💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.
+
+📢 Mientras tanto podés unirte al canal oficial o solicitar acceso VIP.`
+);
     return res.status(200).json({ ok: true });
   }
 
