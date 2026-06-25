@@ -103,23 +103,20 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ ok: true });
     }
+
     if (data.startsWith("retiro_realizado_")) {
-  const userId = data.replace("retiro_realizado_", "");
+      const userId = data.replace("retiro_realizado_", "");
 
-  sessions[userId] = { step: "withdraw_cvu" };
+      sessions[userId] = { step: "withdraw_cvu" };
 
-  await sendMessage(
-    userId,
-    "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
-  );
+      await sendMessage(
+        userId,
+        "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar."
+      );
 
-  await sendMessage(
-    adminChatId,
-    "✅ Se solicitó CVU/CBU al usuario."
-  );
-
-  return res.status(200).json({ ok: true });
-}
+      await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
+      return res.status(200).json({ ok: true });
+    }
   }
 
   if (!update.message) {
@@ -189,18 +186,14 @@ export default async function handler(req, res) {
 
   if (text === "/start" || text === "⬅️ Volver") {
     await sendMessage(ADMIN_ID, `👀 <b>BOT START</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
-
     sessions[chatId] = {};
-
     await sendMessage(chatId, "👑 <b>Bienvenido a Red Corona Bett</b>\n\nSelecciona una opción:", mainMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
     await sendMessage(ADMIN_ID, `🎮 <b>REGISTRO INICIADO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
-
     sessions[chatId] = { step: "name" };
-
     await sendMessage(chatId, "Perfecto ✅\n\n¿Cuál es tu nombre?");
     return res.status(200).json({ ok: true });
   }
@@ -238,32 +231,20 @@ export default async function handler(req, res) {
   }
 
   if (text === "🤝 Recomendación") {
-    await sendMessage(
-      chatId,
-      "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳",
-      bonusesMenu()
-    );
-
+    await sendMessage(chatId, "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳", bonusesMenu());
     await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💎 Fidelidad") {
     await sendMessage(chatId, "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.", bonusesMenu());
-
     await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "⭐ Acceso VIP") {
     await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
-
-    await sendMessage(
-      chatId,
-      "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.",
-      afterRegisterMenu()
-    );
-
+    await sendMessage(chatId, "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.", afterRegisterMenu());
     return res.status(200).json({ ok: true });
   }
 
@@ -273,7 +254,6 @@ export default async function handler(req, res) {
     session.withdrawUser = text;
     session.step = "withdraw_platform";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
     return res.status(200).json({ ok: true });
   }
@@ -287,68 +267,42 @@ export default async function handler(req, res) {
     }
 
     session.withdrawPlatform = text;
-session.step = "withdraw_amount";
-sessions[chatId] = session;
+    session.step = "withdraw_amount";
+    sessions[chatId] = session;
 
-await sendMessage(
-  chatId,
-  "Perfecto ✅\n\n¿Cuánto querés retirar?"
-);
-
-return res.status(200).json({ ok: true });
-    await sendMessage(
-      ADMIN_ID,
-      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n👤 Usuario: ${session.withdrawUser}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, usá:\n/retiroconfirmado ${chatId}`
-    );
-
-    await sendMessage(
-      chatId,
-      "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario y retirará las fichas de la plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación."
-    );
-
+    await sendMessage(chatId, "Perfecto ✅\n\n¿Cuánto querés retirar?");
     return res.status(200).json({ ok: true });
   }
-if (session.step === "withdraw_amount") {
-  session.withdrawAmount = text;
-  session.step = "withdraw_waiting_admin";
-  sessions[chatId] = session;
 
-  await sendMessage(
-  ADMIN_ID,
-  `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
-  `👤 Usuario: ${session.withdrawUser}\n` +
-  `💰 Monto: ${session.withdrawAmount}\n` +
-  `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
-  `Telegram:\n` +
-  `ID: ${chatId}\n` +
-  `Username: @${username}\n` +
-  `Nombre Telegram: ${firstName} ${lastName}\n\n` +
-  `Cuando retires las fichas, tocá el botón de abajo.`,
-  {
-    inline_keyboard: [
-      [
-        {
-          text: "💸 Retiro realizado",
-          callback_data: `retiro_realizado_${chatId}`
-        }
-      ]
-    ]
+  if (session.step === "withdraw_amount") {
+    session.withdrawAmount = text;
+    session.step = "withdraw_waiting_admin";
+    sessions[chatId] = session;
+
+    await sendMessage(
+      ADMIN_ID,
+      `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
+      `👤 Usuario: ${session.withdrawUser}\n` +
+      `💰 Monto: ${session.withdrawAmount}\n` +
+      `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
+      `Telegram:\n` +
+      `ID: ${chatId}\n` +
+      `Username: @${username}\n` +
+      `Nombre Telegram: ${firstName} ${lastName}\n\n` +
+      `Cuando retires las fichas, tocá el botón de abajo.`,
+      {
+        inline_keyboard: [[{ text: "💸 Retiro realizado", callback_data: `retiro_realizado_${chatId}` }]]
+      }
+    );
+
+    await sendMessage(chatId, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación.");
+    return res.status(200).json({ ok: true });
   }
-);
-  );
 
-  await sendMessage(
-    chatId,
-    "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación."
-  );
-
-  return res.status(200).json({ ok: true });
-}
   if (session.step === "withdraw_cvu") {
     session.withdrawCvu = text;
     session.step = "withdraw_holder";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Perfecto ✅\n\nAhora enviame el titular de la cuenta.");
     return res.status(200).json({ ok: true });
   }
@@ -357,7 +311,6 @@ if (session.step === "withdraw_amount") {
     session.withdrawHolder = text;
     session.step = "withdraw_bank";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Bien ✅\n\nAhora enviame el nombre del banco o billetera.");
     return res.status(200).json({ ok: true });
   }
@@ -372,11 +325,7 @@ if (session.step === "withdraw_amount") {
       `💸 <b>DATOS PARA ACREDITAR RETIRO</b>\n\nCVU/CBU: ${session.withdrawCvu}\nTitular: ${session.withdrawHolder}\nBanco/Billetera: ${session.withdrawBank}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
     );
 
-    await sendMessage(
-      chatId,
-      "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te enviará el comprobante por este chat."
-    );
-
+    await sendMessage(chatId, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te enviará el comprobante por este chat.");
     return res.status(200).json({ ok: true });
   }
 
@@ -384,7 +333,6 @@ if (session.step === "withdraw_amount") {
     session.loadUser = text;
     session.step = "load_platform";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
     return res.status(200).json({ ok: true });
   }
@@ -401,10 +349,7 @@ if (session.step === "withdraw_amount") {
     session.step = "waiting_receipt";
     sessions[chatId] = session;
 
-    await sendMessage(
-      ADMIN_ID,
-      `💳 <b>SOLICITUD DE CARGA</b>\n\n👤 Usuario: ${session.loadUser}\n🎮 Plataforma: ${session.loadPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`
-    );
+    await sendMessage(ADMIN_ID, `💳 <b>SOLICITUD DE CARGA</b>\n\n👤 Usuario: ${session.loadUser}\n🎮 Plataforma: ${session.loadPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}`);
 
     await sendMessage(
       chatId,
@@ -432,7 +377,6 @@ Sonia Raquel Gutierrez
     session.name = text;
     session.step = "platform";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Perfecto. Ahora elegí la plataforma:", platformMenu());
     return res.status(200).json({ ok: true });
   }
@@ -448,7 +392,6 @@ Sonia Raquel Gutierrez
     session.platform = text;
     session.step = "phone";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "Ahora enviame tu teléfono de contacto:");
     return res.status(200).json({ ok: true });
   }
@@ -457,7 +400,6 @@ Sonia Raquel Gutierrez
     session.phone = text;
     session.step = "country";
     sessions[chatId] = session;
-
     await sendMessage(chatId, "¿De qué país sos?");
     return res.status(200).json({ ok: true });
   }
@@ -486,12 +428,7 @@ Sonia Raquel Gutierrez
       }
     );
 
-    await sendMessage(
-      chatId,
-      "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.",
-      afterRegisterMenu()
-    );
-
+    await sendMessage(chatId, "✅ Solicitud recibida.\n\nTu acceso está siendo preparado por un administrador.\n\nMientras tanto podés unirte al canal oficial, reclamar beneficios o solicitar acceso VIP.", afterRegisterMenu());
     return res.status(200).json({ ok: true });
   }
 
