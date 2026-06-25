@@ -173,6 +173,31 @@ export default async function handler(req, res) {
       await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/retiroconfirmado ID");
       return res.status(200).json({ ok: true });
     }
+    if (text.startsWith("/comprobantepago") && String(chatId) === ADMIN_ID) {
+  const parts = text.split(" ");
+
+  if (parts.length < 2) {
+    await sendMessage(
+      ADMIN_ID,
+      "Formato incorrecto.\n\nUsá:\n/comprobantepago ID"
+    );
+    return res.status(200).json({ ok: true });
+  }
+
+  const userId = parts[1];
+
+  sessions[ADMIN_ID] = {
+    step: "waiting_payment_receipt",
+    paymentUserId: userId
+  };
+
+  await sendMessage(
+    ADMIN_ID,
+    "Perfecto ✅\n\nAhora enviá la foto o PDF del comprobante de pago."
+  );
+
+  return res.status(200).json({ ok: true });
+}
 
     const userId = parts[1];
     sessions[userId] = { step: "withdraw_cvu" };
@@ -187,6 +212,40 @@ export default async function handler(req, res) {
   }
 
   if (update.message.photo || update.message.document) {
+  const adminSession = sessions[ADMIN_ID];
+
+  if (String(chatId) === ADMIN_ID && adminSession?.step === "waiting_payment_receipt") {
+    const userId = adminSession.paymentUserId;
+
+    await sendMessage(
+      userId,
+      "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias."
+    );
+
+    await sendMessage(
+      ADMIN_ID,
+      "✅ Aviso de pago enviado al usuario.\n\nAhora reenviá manualmente el comprobante si querés que también vea la imagen."
+    );
+
+    sessions[ADMIN_ID] = {};
+    return res.status(200).json({ ok: true });
+  }
+
+  await sendMessage(
+    ADMIN_ID,
+    `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
+    {
+      inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]]
+    }
+  );
+
+  await sendMessage(
+    chatId,
+    "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad."
+  );
+
+  return res.status(200).json({ ok: true });
+}
     await sendMessage(
       ADMIN_ID,
       `📎 <b>COMPROBANTE RECIBIDO</b>\n\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`,
