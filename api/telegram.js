@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { createHash } from "crypto";
 
 const ADMIN_ID = "8291674623";
 const sessions = {};
@@ -15,6 +16,59 @@ function getStartSource(text) {
 
 function nowDate() {
   return new Date().toLocaleString("es-AR");
+}
+
+function hashValue(value) {
+  return createHash("sha256").update(String(value).trim().toLowerCase()).digest("hex");
+}
+
+function toNumber(value) {
+  const n = Number(String(value || "").replace(/[^\d.,]/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function sendMetaEvent(eventName, telegramId, customData = {}) {
+  try {
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
+
+    const payload = {
+      data: [
+        {
+          event_name: eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "system_generated",
+          event_id: `${eventName}_${telegramId}_${Date.now()}`,
+          user_data: {
+            external_id: [hashValue(telegramId)]
+          },
+          custom_data: customData
+        }
+      ]
+    };
+
+    if (process.env.META_TEST_EVENT_CODE) {
+      payload.test_event_code = process.env.META_TEST_EVENT_CODE;
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error("Error enviando evento a Meta:", result);
+    } else {
+      console.log("Evento enviado a Meta:", eventName, result);
+    }
+  } catch (error) {
+    console.error("Error Meta CAPI:", error);
+  }
 }
 
 async function sendMessage(chatId, text, keyboard = null) {
@@ -45,7 +99,7 @@ async function saveUserToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: "A:N",
+      range: "A:X",
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
@@ -60,6 +114,16 @@ async function saveUserToSheet(data) {
           data.pais,
           data.estado,
           "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          nowDate(),
+          "",
+          "NO",
+          "NO",
           "",
           "",
           ""
@@ -80,7 +144,7 @@ async function findUserRowByTelegramId(telegramId) {
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-    range: "A:N"
+    range: "A:X"
   });
 
   const rows = response.data.values || [];
@@ -112,15 +176,50 @@ async function updateUserStatus(telegramId, status, extras = {}) {
     const estado = status || row[9] || "";
     const primeraCarga = extras.primeraCarga ?? row[10] ?? "";
     const fechaCarga = extras.fechaCarga ?? row[11] ?? "";
-    const primerRetiro = extras.primerRetiro ?? row[12] ?? "";
+    const ultimoRetiro = extras.ultimoRetiro ?? extras.primerRetiro ?? row[12] ?? "";
     const fechaRetiro = extras.fechaRetiro ?? row[13] ?? "";
+
+    const totalCargadoActual = toNumber(row[14]);
+    const totalRetiradoActual = toNumber(row[15]);
+
+    const cargaNueva = toNumber(extras.sumarCarga);
+    const retiroNuevo = toNumber(extras.sumarRetiro);
+
+    const totalCargado = extras.totalCargado ?? (cargaNueva ? totalCargadoActual + cargaNueva : row[14] ?? "");
+    const totalRetirado = extras.totalRetirado ?? (retiroNuevo ? totalRetiradoActual + retiroNuevo : row[15] ?? "");
+
+    const saldoNeto = toNumber(totalCargado) - toNumber(totalRetirado);
+
+    const ultimaActividad = extras.ultimaActividad ?? nowDate();
+    const administrador = extras.administrador ?? row[18] ?? "";
+    const vip = extras.vip ?? row[19] ?? "NO";
+    const canalOficial = extras.canalOficial ?? row[20] ?? "NO";
+    const observaciones = extras.observaciones ?? row[21] ?? "";
+    const fechaBloqueo = extras.fechaBloqueo ?? row[22] ?? "";
+    const motivoBloqueo = extras.motivoBloqueo ?? row[23] ?? "";
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
-      range: `J${found.rowNumber}:N${found.rowNumber}`,
+      range: `J${found.rowNumber}:X${found.rowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[estado, primeraCarga, fechaCarga, primerRetiro, fechaRetiro]]
+        values: [[
+          estado,
+          primeraCarga,
+          fechaCarga,
+          ultimoRetiro,
+          fechaRetiro,
+          totalCargado,
+          totalRetirado,
+          saldoNeto,
+          ultimaActividad,
+          administrador,
+          vip,
+          canalOficial,
+          observaciones,
+          fechaBloqueo,
+          motivoBloqueo
+        ]]
       }
     });
 
@@ -202,6 +301,10 @@ export default async function handler(req, res) {
         fechaCarga: nowDate()
       });
 
+      await sendMetaEvent("CargaConfirmada", userId, {
+        status: "Cargó"
+      });
+
       await sendMessage(userId, "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias.");
       await sendMessage(adminChatId, "✅ Confirmación enviada al usuario y estado actualizado en Sheets.");
       return res.status(200).json({ ok: true });
@@ -220,6 +323,10 @@ export default async function handler(req, res) {
 
       await updateUserStatus(userId, "Retiro solicitado");
 
+      await sendMetaEvent("RetiroSolicitado", userId, {
+        status: "Retiro solicitado"
+      });
+
       await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
       await sendMessage(adminChatId, "✅ Se solicitó CVU/CBU al usuario.");
       return res.status(200).json({ ok: true });
@@ -230,6 +337,10 @@ export default async function handler(req, res) {
 
       await updateUserStatus(userId, "Retiro pagado", {
         fechaRetiro: nowDate()
+      });
+
+      await sendMetaEvent("RetiroPagado", userId, {
+        status: "Retiro pagado"
       });
 
       await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
@@ -263,6 +374,10 @@ export default async function handler(req, res) {
 
     await updateUserStatus(userId, "Usuario enviado");
 
+    await sendMetaEvent("UsuarioEnviado", userId, {
+      status: "Usuario enviado"
+    });
+
     await sendMessage(userId, `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`);
     await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente y estado actualizado en Sheets.");
     return res.status(200).json({ ok: true });
@@ -280,7 +395,14 @@ export default async function handler(req, res) {
 
     await updateUserStatus(userId, "Cargó", {
       primeraCarga: amount,
-      fechaCarga: nowDate()
+      fechaCarga: nowDate(),
+      sumarCarga: amount
+    });
+
+    await sendMetaEvent("CargaRealizada", userId, {
+      value: toNumber(amount),
+      currency: "ARS",
+      status: "Cargó"
     });
 
     await sendMessage(ADMIN_ID, "✅ Estado actualizado: Cargó.");
@@ -298,8 +420,15 @@ export default async function handler(req, res) {
     const amount = parts.slice(2).join(" ") || "";
 
     await updateUserStatus(userId, "Retiró", {
-      primerRetiro: amount,
-      fechaRetiro: nowDate()
+      ultimoRetiro: amount,
+      fechaRetiro: nowDate(),
+      sumarRetiro: amount
+    });
+
+    await sendMetaEvent("RetiroRealizado", userId, {
+      value: toNumber(amount),
+      currency: "ARS",
+      status: "Retiró"
     });
 
     await sendMessage(ADMIN_ID, "✅ Estado actualizado: Retiró.");
@@ -314,6 +443,11 @@ export default async function handler(req, res) {
     }
 
     await updateUserStatus(parts[1], "Perdido");
+
+    await sendMetaEvent("UsuarioPerdido", parts[1], {
+      status: "Perdido"
+    });
+
     await sendMessage(ADMIN_ID, "✅ Estado actualizado: Perdido.");
     return res.status(200).json({ ok: true });
   }
@@ -325,7 +459,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    await updateUserStatus(parts[1], "VIP");
+    await updateUserStatus(parts[1], "VIP", {
+      vip: "SI"
+    });
+
+    await sendMetaEvent("UsuarioVIP", parts[1], {
+      status: "VIP"
+    });
+
     await sendMessage(ADMIN_ID, "✅ Estado actualizado: VIP.");
     return res.status(200).json({ ok: true });
   }
@@ -333,11 +474,23 @@ export default async function handler(req, res) {
   if (text.startsWith("/bloqueado") && String(chatId) === ADMIN_ID) {
     const parts = text.split(" ");
     if (parts.length < 2) {
-      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/bloqueado ID");
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/bloqueado ID MOTIVO");
       return res.status(200).json({ ok: true });
     }
 
-    await updateUserStatus(parts[1], "Bloqueado");
+    const userId = parts[1];
+    const motivo = parts.slice(2).join(" ") || "Sin motivo";
+
+    await updateUserStatus(userId, "Bloqueado", {
+      fechaBloqueo: nowDate(),
+      motivoBloqueo: motivo
+    });
+
+    await sendMetaEvent("UsuarioBloqueado", userId, {
+      status: "Bloqueado",
+      motivo
+    });
+
     await sendMessage(ADMIN_ID, "✅ Estado actualizado: Bloqueado.");
     return res.status(200).json({ ok: true });
   }
@@ -354,6 +507,10 @@ export default async function handler(req, res) {
     sessions[userId] = { ...oldSession, step: "withdraw_cvu" };
 
     await updateUserStatus(userId, "Retiro solicitado");
+
+    await sendMetaEvent("RetiroSolicitado", userId, {
+      status: "Retiro solicitado"
+    });
 
     await sendMessage(userId, "✅ Ya retiramos las fichas de la plataforma.\n\nAhora enviame tu CVU/CBU para acreditar.");
     await sendMessage(ADMIN_ID, "✅ Se solicitó CVU/CBU al usuario.");
@@ -386,6 +543,10 @@ export default async function handler(req, res) {
         fechaRetiro: nowDate()
       });
 
+      await sendMetaEvent("RetiroPagado", userId, {
+        status: "Retiro pagado"
+      });
+
       await sendMessage(userId, "✅ Pago enviado.\n\nTu retiro fue acreditado correctamente.\n\nMuchas gracias.");
       await sendMessage(ADMIN_ID, "✅ Aviso de pago enviado al usuario.\n\nAhora reenviá manualmente el comprobante si querés que también vea la imagen.");
 
@@ -394,6 +555,11 @@ export default async function handler(req, res) {
     }
 
     await updateUserStatus(chatId, "Comprobante recibido");
+
+    await sendMetaEvent("ComprobanteRecibido", chatId, {
+      status: "Comprobante recibido",
+      source: sourceLabel
+    });
 
     await sendMessage(
       ADMIN_ID,
@@ -409,6 +575,10 @@ export default async function handler(req, res) {
     const startSource = text.startsWith("/start") ? getStartSource(text) : source;
     const startSourceLabel = getSourceLabel(startSource);
 
+    await sendMetaEvent("BotStart", chatId, {
+      source: startSourceLabel
+    });
+
     await sendMessage(
       ADMIN_ID,
       `👀 <b>BOT START</b>\n\nOrigen: ${startSourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
@@ -421,6 +591,10 @@ export default async function handler(req, res) {
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
+    await sendMetaEvent("RegistroIniciado", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(
       ADMIN_ID,
       `🎮 <b>REGISTRO INICIADO</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
@@ -433,49 +607,86 @@ export default async function handler(req, res) {
 
   if (text === "💳 Cargar") {
     sessions[chatId] = { step: "load_user", source };
+    await sendMetaEvent("CargaIniciada", chatId, {
+      source: sourceLabel
+    });
     await sendMessage(chatId, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🥳💸 Gané y quiero retirar") {
     sessions[chatId] = { step: "withdraw_user", source };
+    await sendMetaEvent("RetiroIniciado", chatId, {
+      source: sourceLabel
+    });
     await sendMessage(chatId, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "👨‍💼 Hablar con un ADM" || text === "/admin") {
+    await sendMetaEvent("ContactoADM", chatId, {
+      source: sourceLabel
+    });
     await sendMessage(chatId, "Podés hablar con un administrador acá:\n\nhttps://t.me/Eliamcorona");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "📢 Canal Oficial" || text === "/canal") {
+    await updateUserStatus(chatId, null, {
+      canalOficial: "SI"
+    });
+
+    await sendMetaEvent("CanalOficial", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(chatId, "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet");
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎁 Beneficios" || text === "/beneficios" || text === "🎁 Reclamar Bonos") {
+    await sendMetaEvent("Beneficios", chatId, {
+      source: sourceLabel
+    });
     await sendMessage(chatId, "🎁 Seleccioná el beneficio que querés consultar:", bonusesMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🎉 Bono de Bienvenida") {
+    await sendMetaEvent("BonoBienvenida", chatId, {
+      source: sourceLabel
+    });
     await sendMessage(chatId, "🎉 Bono de Bienvenida\n\nUna vez que tu usuario esté habilitado podés solicitar este beneficio.", bonusesMenu());
     return res.status(200).json({ ok: true });
   }
 
   if (text === "🤝 Recomendación") {
+    await sendMetaEvent("Recomendacion", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(chatId, "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳", bonusesMenu());
     await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💎 Fidelidad") {
+    await sendMetaEvent("Fidelidad", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(chatId, "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.", bonusesMenu());
     await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     return res.status(200).json({ ok: true });
   }
 
   if (text === "⭐ Acceso VIP") {
+    await updateUserStatus(chatId, "Solicitud VIP");
+
+    await sendMetaEvent("SolicitudVIP", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
     await sendMessage(chatId, "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.", afterRegisterMenu());
     return res.status(200).json({ ok: true });
@@ -512,8 +723,15 @@ export default async function handler(req, res) {
     sessions[chatId] = session;
 
     await updateUserStatus(chatId, "Retiro solicitado", {
-      primerRetiro: session.withdrawAmount,
+      ultimoRetiro: session.withdrawAmount,
       fechaRetiro: nowDate()
+    });
+
+    await sendMetaEvent("RetiroSolicitado", chatId, {
+      value: toNumber(session.withdrawAmount),
+      currency: "ARS",
+      source: sessionSourceLabel,
+      platform: session.withdrawPlatform
     });
 
     await sendMessage(
@@ -578,6 +796,11 @@ export default async function handler(req, res) {
     sessions[chatId] = session;
 
     await updateUserStatus(chatId, "Carga solicitada");
+
+    await sendMetaEvent("CargaSolicitada", chatId, {
+      source: sessionSourceLabel,
+      platform: session.loadPlatform
+    });
 
     await sendMessage(
       ADMIN_ID,
@@ -660,6 +883,20 @@ Sonia Raquel Gutierrez
       telefono: session.phone,
       pais: session.country,
       estado: "Registrado"
+    });
+
+    await sendMetaEvent("CompleteRegistration", chatId, {
+      source: sessionSourceLabel,
+      platform: session.platform,
+      country: session.country,
+      status: "Registrado"
+    });
+
+    await sendMetaEvent("Lead", chatId, {
+      source: sessionSourceLabel,
+      platform: session.platform,
+      country: session.country,
+      status: "Registrado"
     });
 
     await sendMessage(
