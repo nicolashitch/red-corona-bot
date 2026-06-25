@@ -270,9 +270,15 @@ export default async function handler(req, res) {
     }
 
     session.withdrawPlatform = text;
-    session.step = "withdraw_waiting_admin";
-    sessions[chatId] = session;
+session.step = "withdraw_amount";
+sessions[chatId] = session;
 
+await sendMessage(
+  chatId,
+  "Perfecto ✅\n\n¿Cuánto querés retirar?"
+);
+
+return res.status(200).json({ ok: true });
     await sendMessage(
       ADMIN_ID,
       `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n👤 Usuario: ${session.withdrawUser}\n🎮 Plataforma: ${session.withdrawPlatform}\n\nTelegram:\nID: ${chatId}\nUsername: @${username}\nNombre Telegram: ${firstName} ${lastName}\n\nCuando retires las fichas, usá:\n/retiroconfirmado ${chatId}`
@@ -285,7 +291,31 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true });
   }
+if (session.step === "withdraw_amount") {
+  session.withdrawAmount = text;
+  session.step = "withdraw_waiting_admin";
+  sessions[chatId] = session;
 
+  await sendMessage(
+    ADMIN_ID,
+    `🥳💸 <b>SOLICITUD DE RETIRO</b>\n\n` +
+    `👤 Usuario: ${session.withdrawUser}\n` +
+    `💰 Monto: ${session.withdrawAmount}\n` +
+    `🎮 Plataforma: ${session.withdrawPlatform}\n\n` +
+    `Telegram:\n` +
+    `ID: ${chatId}\n` +
+    `Username: @${username}\n` +
+    `Nombre Telegram: ${firstName} ${lastName}\n\n` +
+    `Cuando retires las fichas, usá:\n/retiroconfirmado ${chatId}`
+  );
+
+  await sendMessage(
+    chatId,
+    "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación."
+  );
+
+  return res.status(200).json({ ok: true });
+}
   if (session.step === "withdraw_cvu") {
     session.withdrawCvu = text;
     session.step = "withdraw_holder";
