@@ -19,12 +19,34 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function sendTelegram(chatId, text) {
+function adminButtons(userId) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Confirmar carga", callback_data: `confirmar_carga:${userId}` },
+        { text: "👤 Enviar usuario", callback_data: `enviar_usuario:${userId}` }
+      ],
+      [
+        { text: "💸 Confirmar retiro", callback_data: `confirmar_retiro:${userId}` },
+        { text: "❌ Rechazar", callback_data: `rechazar:${userId}` }
+      ],
+      [
+        { text: "📋 Ver perfil", callback_data: `ver_perfil:${userId}` },
+        { text: "💬 Responder", callback_data: `responder:${userId}` }
+      ]
+    ]
+  };
+}
+
+async function sendTelegram(chatId, text, replyMarkup = null) {
   try {
+    const body = { chat_id: chatId, text, parse_mode: "HTML" };
+    if (replyMarkup) body.reply_markup = replyMarkup;
+
     await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" })
+      body: JSON.stringify(body)
     });
   } catch (error) {
     console.error("Error enviando Telegram:", error);
@@ -306,10 +328,43 @@ module.exports = async function handler(req, res) {
     const session = sessions[from] || {};
     const origen = "🟢 WHATSAPP";
 
+    if (message.image || message.document) {
+      await updateUserStatus(from, "Comprobante recibido");
+
+      sendMetaEvent("ComprobanteRecibido", from, {
+        status: "Comprobante recibido",
+        source: origen
+      });
+
+      await sendTelegram(
+        ADMIN_ID,
+        `📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>
+
+Origen: ${origen}
+ID: <code>${from}</code>
+Nombre: ${contactName}
+
+Usá los botones para continuar.`,
+        adminButtons(from)
+      );
+
+      await sendWhatsApp(from, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
     if (text === "0" || text.toLowerCase() === "menu" || text.toLowerCase() === "hola") {
       sessions[from] = {};
       sendMetaEvent("BotStart", from, { source: origen });
-      await sendTelegram(ADMIN_ID, `👀 <b>WHATSAPP START</b>\n\nID: ${from}\nNombre: ${contactName}`);
+
+      await sendTelegram(
+        ADMIN_ID,
+        `👀 <b>WHATSAPP START</b>
+
+ID: <code>${from}</code>
+Nombre: ${contactName}`,
+        adminButtons(from)
+      );
+
       await sendWhatsApp(from, mainMenuText());
       return res.status(200).send("EVENT_RECEIVED");
     }
@@ -317,7 +372,16 @@ module.exports = async function handler(req, res) {
     if (text === "1" && !session.step) {
       sessions[from] = { step: "name" };
       sendMetaEvent("RegistroIniciado", from, { source: origen });
-      await sendTelegram(ADMIN_ID, `🎮 <b>REGISTRO INICIADO WHATSAPP</b>\n\nID: ${from}\nNombre: ${contactName}`);
+
+      await sendTelegram(
+        ADMIN_ID,
+        `🎮 <b>REGISTRO INICIADO WHATSAPP</b>
+
+ID: <code>${from}</code>
+Nombre: ${contactName}`,
+        adminButtons(from)
+      );
+
       await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuál es tu nombre?");
       return res.status(200).send("EVENT_RECEIVED");
     }
@@ -427,11 +491,11 @@ Origen: ${origen}
 🌍 País: ${session.country}
 
 WhatsApp:
-ID: ${from}
+ID: <code>${from}</code>
 Nombre WhatsApp: ${contactName}
 
-Para enviar usuario usá:
-/enviarusuario ${from} USUARIO CONTRASEÑA LINK`
+Usá los botones para continuar.`,
+        adminButtons(from)
       );
 
       await sendWhatsApp(
@@ -453,9 +517,7 @@ Sonia Raquel Gutierrez
 
 ✅ Luego de transferir, enviá el comprobante por este mismo chat.
 
-⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.
-
-📢 Mientras tanto podés unirte al canal oficial o solicitar acceso VIP.`
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`
       );
 
       return res.status(200).send("EVENT_RECEIVED");
@@ -493,8 +555,9 @@ Origen: ${origen}
 🎮 Plataforma: ${platform}
 
 WhatsApp:
-ID: ${from}
-Nombre: ${contactName}`
+ID: <code>${from}</code>
+Nombre: ${contactName}`,
+        adminButtons(from)
       );
 
       await sendWhatsApp(
@@ -510,35 +573,9 @@ redcoronabet7
 👤 Titular:
 Sonia Raquel Gutierrez
 
-✅ Luego de transferir, enviá el comprobante por este mismo chat.
-
-⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`
+✅ Luego de transferir, enviá el comprobante por este mismo chat.`
       );
 
-      return res.status(200).send("EVENT_RECEIVED");
-    }
-
-    if (message.image || message.document) {
-      await updateUserStatus(from, "Comprobante recibido");
-
-      sendMetaEvent("ComprobanteRecibido", from, {
-        status: "Comprobante recibido",
-        source: origen
-      });
-
-      await sendTelegram(
-        ADMIN_ID,
-        `📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>
-
-Origen: ${origen}
-ID: ${from}
-Nombre: ${contactName}
-
-Para confirmar carga usá:
-/cargo ${from} MONTO`
-      );
-
-      await sendWhatsApp(from, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
@@ -592,14 +629,12 @@ Origen: ${origen}
 🎮 Plataforma: ${session.withdrawPlatform}
 
 WhatsApp:
-ID: ${from}
-Nombre: ${contactName}
-
-Cuando retires las fichas, usá:
-/retiroconfirmado ${from}`
+ID: <code>${from}</code>
+Nombre: ${contactName}`,
+        adminButtons(from)
       );
 
-      await sendWhatsApp(from, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación.");
+      await sendWhatsApp(from, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
