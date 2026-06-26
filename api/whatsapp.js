@@ -71,35 +71,6 @@ async function sendTelegram(chatId, text, replyMarkup = null) {
   }
 }
 
-async function sendTelegramPhoto(chatId, photoUrl, caption, replyMarkup = null) {
-  try {
-    const body = {
-      chat_id: chatId,
-      photo: photoUrl,
-      caption,
-      parse_mode: "HTML"
-    };
-
-    if (replyMarkup) body.reply_markup = replyMarkup;
-
-    const response = await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendPhoto`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      }
-    );
-
-    const data = await response.json();
-    console.log("Telegram Photo:", JSON.stringify(data, null, 2));
-    return data;
-  } catch (error) {
-    console.error("Error enviando foto a Telegram:", error);
-    return null;
-  }
-}
-
 async function sendWhatsApp(to, text) {
   try {
     const response = await fetch(
@@ -214,8 +185,7 @@ async function findUserRowById(userId) {
 }
 
 function normalizeRow(row = []) {
-  const r = Array.from({ length: 24 }, (_, i) => row[i] || "");
-  return r;
+  return Array.from({ length: 24 }, (_, i) => row[i] || "");
 }
 
 async function saveFullRow(rowNumber, row) {
@@ -310,4 +280,530 @@ async function updateUser(userId, updates = {}) {
   if (updates.administrador !== undefined) row[18] = updates.administrador;
   if (updates.vip !== undefined) row[19] = updates.vip;
   if (updates.canalOficial !== undefined) row[20] = updates.canalOficial;
-  if (updates.observaciones !== undefined) row[21] = updates
+  if (updates.observaciones !== undefined) row[21] = updates.observaciones;
+  if (updates.fechaBloqueo !== undefined) row[22] = updates.fechaBloqueo;
+  if (updates.motivoBloqueo !== undefined) row[23] = updates.motivoBloqueo;
+
+  await saveFullRow(found.rowNumber, row);
+  return true;
+}
+
+function getStatus(row) {
+  return String(row[9] || "MENU").trim();
+}
+
+function mainMenuText() {
+  return `👑 Bienvenido a Red Corona Bett
+
+Seleccioná una opción respondiendo con el número:
+
+1️⃣ Crear Usuario
+2️⃣ Cargar
+3️⃣ Gané y quiero retirar
+4️⃣ Hablar con un ADM
+5️⃣ Canal Oficial
+6️⃣ Beneficios`;
+}
+
+function platformText() {
+  return `Elegí la plataforma:
+
+1️⃣ Bet Space
+2️⃣ Ganamosnet Org
+3️⃣ Zeus
+0️⃣ Volver`;
+}
+
+function benefitsText() {
+  return `🎁 Beneficios disponibles
+
+1️⃣ Bono de Bienvenida
+2️⃣ Recomendación
+3️⃣ Fidelidad
+
+0️⃣ Volver`;
+}
+
+function normalizePlatform(text) {
+  if (text === "1") return "Bet Space";
+  if (text === "2") return "Ganamosnet Org";
+  if (text === "3") return "Zeus";
+  return null;
+}
+
+
+
+async function notifyAdmin(title, from, contactName, extra = "") {
+  await sendTelegram(
+    ADMIN_ID,
+    `${title}
+
+ID: <code>${from}</code>
+Nombre: ${contactName}
+${extra}`,
+    adminButtons(from)
+  );
+}
+
+async function handleMediaMessage(from, contactName, message) {
+  await updateUser(from, {
+    estado: "COMPROBANTE_RECIBIDO",
+    observaciones: "Comprobante recibido por WhatsApp"
+  });
+
+  await notifyAdmin(
+    "📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>",
+    from,
+    contactName,
+    "\nUsá los botones para continuar."
+  );
+
+  await sendMetaEvent("ComprobanteRecibido", from, {
+    source: "whatsapp"
+  });
+
+  await sendWhatsApp(
+    from,
+    "✅ Comprobante recibido.\n\nUn administrador lo revisará y te confirmará a la brevedad."
+  );
+}
+
+async function handleUserText(from, contactName, text) {
+  const found = await getOrCreateUser(from, contactName);
+  const row = normalizeRow(found.row);
+  const status = getStatus(row);
+
+  const lower = text.toLowerCase();
+
+  if (lower === "menu" || text === "0") {
+    await updateUser(from, { estado: "MENU", nombreWhatsapp: contactName });
+    await sendWhatsApp(from, mainMenuText());
+    return;
+  }
+
+  if (lower === "hola" && status === "MENU") {
+    await updateUser(from, { estado: "MENU", nombreWhatsapp: contactName });
+    await sendMetaEvent("BotStart", from, { source: "whatsapp" });
+    await notifyAdmin("👀 <b>WHATSAPP START</b>", from, contactName);
+    await sendWhatsApp(from, mainMenuText());
+    return;
+  }
+
+  if (status === "MENU") {
+    if (text === "1") {
+      await updateUser(from, {
+        estado: "REG_NOMBRE",
+        nombreWhatsapp: contactName
+      });
+
+      await sendMetaEvent("RegistroIniciado", from, {
+        source: "whatsapp"
+      });
+
+      await notifyAdmin(
+        "🎮 <b>REGISTRO INICIADO WHATSAPP</b>",
+        from,
+        contactName
+      );
+
+      await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuál es tu nombre?");
+      return;
+    }
+
+    if (text === "2") {
+      await updateUser(from, {
+        estado: "CARGA_USUARIO",
+        nombreWhatsapp: contactName
+      });
+
+      await sendMetaEvent("CargaIniciada", from, {
+        source: "whatsapp"
+      });
+
+      await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return;
+    }
+
+    if (text === "3") {
+      await updateUser(from, {
+        estado: "RETIRO_USUARIO",
+        nombreWhatsapp: contactName
+      });
+
+      await sendMetaEvent("RetiroIniciado", from, {
+        source: "whatsapp"
+      });
+
+      await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return;
+    }
+
+    if (text === "4") {
+      await sendMetaEvent("ContactoADM", from, {
+        source: "whatsapp"
+      });
+
+      await notifyAdmin(
+        "👨‍💼 <b>CLIENTE PIDE ADM WHATSAPP</b>",
+        from,
+        contactName
+      );
+
+      await sendWhatsApp(
+        from,
+        "👨‍💼 Un administrador fue notificado.\n\nTambién podés escribir por Telegram:\nhttps://t.me/Eliamcorona"
+      );
+      return;
+    }
+
+    if (text === "5") {
+      await updateUser(from, {
+        canalOficial: "SI",
+        nombreWhatsapp: contactName
+      });
+
+      await sendMetaEvent("CanalOficial", from, {
+        source: "whatsapp"
+      });
+
+      await sendWhatsApp(
+        from,
+        "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet"
+      );
+      return;
+    }
+
+    if (text === "6") {
+      await sendMetaEvent("Beneficios", from, {
+        source: "whatsapp"
+      });
+
+      await sendWhatsApp(from, benefitsText());
+      return;
+    }
+
+    await sendWhatsApp(from, mainMenuText());
+    return;
+  }
+
+  if (status === "REG_NOMBRE") {
+    await updateUser(from, {
+      estado: "REG_PLATAFORMA",
+      nombre: text,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, platformText());
+    return;
+  }
+
+  if (status === "REG_PLATAFORMA") {
+    const platform = normalizePlatform(text);
+
+    if (!platform) {
+      await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+      return;
+    }
+
+    await updateUser(from, {
+      estado: "REG_TELEFONO",
+      plataforma: platform,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, "Ahora enviame tu teléfono de contacto:");
+    return;
+  }
+
+  if (status === "REG_TELEFONO") {
+    await updateUser(from, {
+      estado: "REG_PAIS",
+      telefono: text,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, "¿De qué país sos?");
+    return;
+  }
+
+  if (status === "REG_PAIS") {
+    await updateUser(from, {
+      estado: "REGISTRADO",
+      pais: text,
+      nombreWhatsapp: contactName
+    });
+
+    const refreshed = await findUserRowById(from);
+    const r = normalizeRow(refreshed?.row || []);
+
+    await sendMetaEvent("CompleteRegistration", from, {
+      source: "whatsapp",
+      platform: r[6] || "",
+      country: text,
+      status: "Registrado"
+    });
+
+    await sendMetaEvent("Lead", from, {
+      source: "whatsapp",
+      platform: r[6] || "",
+      country: text,
+      status: "Registrado"
+    });
+
+    await sendTelegram(
+      ADMIN_ID,
+      `🚨 <b>NUEVA SOLICITUD WHATSAPP</b>
+
+Origen: 🟢 WHATSAPP
+👤 Nombre: ${r[5] || ""}
+🎮 Plataforma: ${r[6] || ""}
+📞 Teléfono: ${r[7] || ""}
+🌍 País: ${text}
+
+WhatsApp:
+ID: <code>${from}</code>
+Nombre WhatsApp: ${contactName}
+
+Usá los botones para continuar.`,
+      adminButtons(from)
+    );
+
+    await sendWhatsApp(
+      from,
+      `✅ Solicitud recibida.
+
+Tu acceso está siendo preparado por un administrador.
+
+💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`
+    );
+
+    return;
+  }
+
+  if (status === "REGISTRADO" || status === "USUARIO_ENVIADO" || status === "CARGA_CONFIRMADA" || status === "COMPROBANTE_RECIBIDO" || status === "RETIRO_CONFIRMADO") {
+    if (text === "1") {
+      await updateUser(from, {
+        estado: "REG_NOMBRE",
+        nombreWhatsapp: contactName
+      });
+      await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuál es tu nombre?");
+      return;
+    }
+
+    if (text === "2") {
+      await updateUser(from, {
+        estado: "CARGA_USUARIO",
+        nombreWhatsapp: contactName
+      });
+      await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return;
+    }
+
+    if (text === "3") {
+      await updateUser(from, {
+        estado: "RETIRO_USUARIO",
+        nombreWhatsapp: contactName
+      });
+      await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return;
+    }
+
+    await sendWhatsApp(from, mainMenuText());
+    return;
+  }
+
+  if (status === "CARGA_USUARIO") {
+    await updateUser(from, {
+      estado: "CARGA_PLATAFORMA",
+      username: text,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, platformText());
+    return;
+  }
+
+  if (status === "CARGA_PLATAFORMA") {
+    const platform = normalizePlatform(text);
+
+    if (!platform) {
+      await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+      return;
+    }
+
+    await updateUser(from, {
+      estado: "CARGA_ESPERANDO_COMPROBANTE",
+      plataforma: platform,
+      nombreWhatsapp: contactName
+    });
+
+    await sendMetaEvent("CargaSolicitada", from, {
+      source: "whatsapp",
+      platform
+    });
+
+    await notifyAdmin(
+      "💳 <b>SOLICITUD DE CARGA WHATSAPP</b>",
+      from,
+      contactName,
+      `\nUsuario: ${row[3] || ""}\nPlataforma: ${platform}`
+    );
+
+    await sendWhatsApp(
+      from,
+      `💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.`
+    );
+
+    return;
+  }
+
+  if (status === "RETIRO_USUARIO") {
+    await updateUser(from, {
+      estado: "RETIRO_PLATAFORMA",
+      username: text,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, platformText());
+    return;
+  }
+
+  if (status === "RETIRO_PLATAFORMA") {
+    const platform = normalizePlatform(text);
+
+    if (!platform) {
+      await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+      return;
+    }
+
+    await updateUser(from, {
+      estado: "RETIRO_MONTO",
+      plataforma: platform,
+      nombreWhatsapp: contactName
+    });
+
+    await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuánto querés retirar?");
+    return;
+  }
+
+  if (status === "RETIRO_MONTO") {
+    await updateUser(from, {
+      estado: "RETIRO_SOLICITADO",
+      ultimoRetiro: text,
+      fechaRetiro: nowDate(),
+      nombreWhatsapp: contactName
+    });
+
+    const refreshed = await findUserRowById(from);
+    const r = normalizeRow(refreshed?.row || []);
+
+    await sendMetaEvent("RetiroSolicitado", from, {
+      value: toNumber(text),
+      currency: "ARS",
+      source: "whatsapp",
+      platform: r[6] || ""
+    });
+
+    await sendTelegram(
+      ADMIN_ID,
+      `🥳💸 <b>SOLICITUD DE RETIRO WHATSAPP</b>
+
+Origen: 🟢 WHATSAPP
+👤 Usuario: ${r[3] || ""}
+💰 Monto: ${text}
+🎮 Plataforma: ${r[6] || ""}
+
+WhatsApp:
+ID: <code>${from}</code>
+Nombre: ${contactName}`,
+      adminButtons(from)
+    );
+
+    await sendWhatsApp(
+      from,
+      "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma."
+    );
+
+    return;
+  }
+
+  await sendWhatsApp(from, mainMenuText());
+}
+
+module.exports = async function handler(req, res) {
+  try {
+    const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+
+    if (req.method === "GET") {
+      const mode = req.query["hub.mode"];
+      const token = req.query["hub.verify_token"];
+      const challenge = req.query["hub.challenge"];
+
+      if (mode === "subscribe" && token === VERIFY_TOKEN) {
+        return res.status(200).send(challenge);
+      }
+
+      return res.status(403).send("Forbidden");
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).send("Method Not Allowed");
+    }
+
+    const body = req.body;
+    console.log("Webhook WhatsApp recibido:", JSON.stringify(body, null, 2));
+
+    const value = body.entry?.[0]?.changes?.[0]?.value;
+    const message = value?.messages?.[0];
+
+    if (!message) {
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    const from = message.from;
+    const contactName = value?.contacts?.[0]?.profile?.name || "Sin nombre";
+    const text = message.text?.body?.trim() || "";
+
+    await getOrCreateUser(from, contactName);
+
+    if (message.image || message.document) {
+      await handleMediaMessage(from, contactName, message);
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (text) {
+      await handleUserText(from, contactName, text);
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    await sendWhatsApp(from, mainMenuText());
+    return res.status(200).send("EVENT_RECEIVED");
+  } catch (error) {
+    console.error("Error general whatsapp webhook:", error);
+    return res.status(200).send("EVENT_RECEIVED");
+  }
+};
