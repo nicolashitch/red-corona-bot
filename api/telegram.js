@@ -1,79 +1,33 @@
 const { google } = require("googleapis");
+const { createHash } = require("crypto");
 
 const ADMIN_ID = "8291674623";
+const sessions = {};
 
 function nowDate() {
   return new Date().toLocaleString("es-AR");
 }
 
-function toNumber(value) {
-  const clean = String(value || "")
-    .replace(/\s/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^\d.]/g, "");
+function hashValue(value) {
+  return createHash("sha256")
+    .update(String(value || "").trim().toLowerCase())
+    .digest("hex");
+}
 
-  const n = Number(clean);
+function toNumber(value) {
+  const n = Number(String(value || "").replace(/[^\d.,]/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 }
 
-function getCredentials() {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-
-  if (credentials.private_key) {
-    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
-  }
-
-  return credentials;
-}
-
-async function sendTelegram(chatId, text, replyMarkup = null) {
+async function sendTelegram(chatId, text) {
   try {
-    const body = {
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true
-    };
-
-    if (replyMarkup) body.reply_markup = replyMarkup;
-
-    const response = await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      }
-    );
-
-    const data = await response.json();
-    console.log("Telegram Status:", response.status);
-    console.log("Respuesta Telegram:", JSON.stringify(data, null, 2));
-
-    return data;
+    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" })
+    });
   } catch (error) {
     console.error("Error enviando Telegram:", error);
-    return null;
-  }
-}
-
-async function answerCallback(callbackId, text = "Listo ✅") {
-  try {
-    await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text,
-          show_alert: false
-        })
-      }
-    );
-  } catch (error) {
-    console.error("Error respondiendo callback:", error);
   }
 }
 
@@ -97,18 +51,60 @@ async function sendWhatsApp(to, text) {
     );
 
     const data = await response.json();
-    console.log("WhatsApp Status desde Telegram:", response.status);
-    console.log("Respuesta WhatsApp desde Telegram:", JSON.stringify(data, null, 2));
+    console.log("WhatsApp Status:", response.status);
+    console.log("Respuesta WhatsApp:", JSON.stringify(data, null, 2));
 
     return data;
   } catch (error) {
-    console.error("Error enviando WhatsApp desde Telegram:", error);
+    console.error("Error enviando WhatsApp:", error);
     return null;
   }
 }
 
+async function sendMetaEvent(eventName, whatsappId, customData = {}) {
+  try {
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+      console.log("Meta CAPI omitido: faltan variables.");
+      return;
+    }
+
+    const payload = {
+      data: [
+        {
+          event_name: eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "system_generated",
+          event_id: `${eventName}_${whatsappId}_${Date.now()}`,
+          user_data: {
+            external_id: [hashValue(whatsappId)]
+          },
+          custom_data: customData
+        }
+      ]
+    };
+
+    if (process.env.META_TEST_EVENT_CODE) {
+      payload.test_event_code = process.env.META_TEST_EVENT_CODE;
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result = await response.json();
+    console.log("Evento Meta:", eventName, JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error("Error Meta CAPI:", error);
+  }
+}
+
 function getSheetsClient() {
-  const credentials = getCredentials();
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -118,7 +114,50 @@ function getSheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-async function getRows() {
+async function saveUserToSheet(data) {
+  try {
+    const sheets = getSheetsClient();
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: "A:X",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[
+          nowDate(),
+          data.origen,
+          data.whatsappId,
+          data.username || "",
+          data.nombreWhatsapp,
+          data.nombre,
+          data.plataforma,
+          data.telefono,
+          data.pais,
+          data.estado,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          nowDate(),
+          "",
+          "NO",
+          "NO",
+          "",
+          "",
+          ""
+        ]]
+      }
+    });
+  } catch (error) {
+    console.error("Error guardando en Sheets:", error);
+    await sendTelegram(ADMIN_ID, "⚠️ Error guardando usuario de WhatsApp en Google Sheets.");
+  }
+}
+
+async function findUserRowById(userId) {
   const sheets = getSheetsClient();
 
   const response = await sheets.spreadsheets.values.get({
@@ -126,14 +165,10 @@ async function getRows() {
     range: "A:X"
   });
 
-  return response.data.values || [];
-}
-
-async function findUserRowById(userId) {
-  const rows = await getRows();
+  const rows = response.data.values || [];
 
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][2] || "").trim() === String(userId).trim()) {
+    if (String(rows[i][2]) === String(userId)) {
       return { rowNumber: i + 1, row: rows[i] };
     }
   }
@@ -147,30 +182,22 @@ async function updateUserStatus(userId, status, extras = {}) {
     const found = await findUserRowById(userId);
 
     if (!found) {
-      await sendTelegram(
-        ADMIN_ID,
-        `⚠️ No encontré el usuario <code>${userId}</code> en Sheets.`
-      );
+      await sendTelegram(ADMIN_ID, `⚠️ No encontré el usuario ${userId} en Sheets.`);
       return false;
     }
 
     const row = found.row;
 
+    const estado = status || row[9] || "";
     const totalCargadoActual = toNumber(row[14]);
     const totalRetiradoActual = toNumber(row[15]);
 
     const cargaNueva = toNumber(extras.sumarCarga);
     const retiroNuevo = toNumber(extras.sumarRetiro);
 
-    const totalCargado = cargaNueva
-      ? totalCargadoActual + cargaNueva
-      : totalCargadoActual;
-
-    const totalRetirado = retiroNuevo
-      ? totalRetiradoActual + retiroNuevo
-      : totalRetiradoActual;
-
-    const saldoNeto = totalCargado - totalRetirado;
+    const totalCargado = extras.totalCargado ?? (cargaNueva ? totalCargadoActual + cargaNueva : row[14] ?? "");
+    const totalRetirado = extras.totalRetirado ?? (retiroNuevo ? totalRetiradoActual + retiroNuevo : row[15] ?? "");
+    const saldoNeto = toNumber(totalCargado) - toNumber(totalRetirado);
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SHEETS_ID,
@@ -178,7 +205,7 @@ async function updateUserStatus(userId, status, extras = {}) {
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
-          status || row[9] || "",
+          estado,
           extras.primeraCarga ?? row[10] ?? "",
           extras.fechaCarga ?? row[11] ?? "",
           extras.ultimoRetiro ?? row[12] ?? "",
@@ -200,341 +227,386 @@ async function updateUserStatus(userId, status, extras = {}) {
     return true;
   } catch (error) {
     console.error("Error actualizando Sheets:", error);
-    await sendTelegram(ADMIN_ID, "⚠️ Error actualizando Google Sheets.");
+    await sendTelegram(ADMIN_ID, "⚠️ Error actualizando estado en Sheets.");
     return false;
   }
 }
 
-function actionButtons(userId) {
-  return {
-    inline_keyboard: [
-      [
-        { text: "✅ Confirmar carga", callback_data: `confirmar_carga:${userId}` },
-        { text: "👤 Enviar usuario", callback_data: `enviar_usuario:${userId}` }
-      ],
-      [
-        { text: "💸 Confirmar retiro", callback_data: `confirmar_retiro:${userId}` },
-        { text: "❌ Rechazar", callback_data: `rechazar:${userId}` }
-      ],
-      [
-        { text: "📋 Ver perfil", callback_data: `ver_perfil:${userId}` },
-        { text: "💬 Responder", callback_data: `responder:${userId}` }
-      ]
-    ]
-  };
+function mainMenuText() {
+  return `👑 Bienvenido a Red Corona Bett
+
+Seleccioná una opción respondiendo con el número:
+
+1️⃣ Crear Usuario
+2️⃣ Cargar
+3️⃣ Gané y quiero retirar
+4️⃣ Hablar con un ADM
+5️⃣ Canal Oficial
+6️⃣ Beneficios`;
 }
 
-async function handleCommand(text) {
-  const parts = text.trim().split(/\s+/);
-  const command = parts[0];
+function platformText() {
+  return `Elegí la plataforma:
 
-  if (command === "/start" || command === "/menu") {
-    await sendTelegram(
-      ADMIN_ID,
-      `👑 <b>Panel ADM Red Corona Bett</b>
-
-Comandos disponibles:
-
-<code>/enviarusuario ID USUARIO CONTRASEÑA LINK</code>
-<code>/cargo ID MONTO</code>
-<code>/retiroconfirmado ID MONTO</code>
-<code>/responder ID MENSAJE</code>
-<code>/perfil ID</code>`
-    );
-    return;
-  }
-
-  if (command === "/enviarusuario") {
-    const [, userId, usuario, password, ...linkParts] = parts;
-    const link = linkParts.join(" ");
-
-    if (!userId || !usuario || !password || !link) {
-      await sendTelegram(
-        ADMIN_ID,
-        "Uso correcto:\n<code>/enviarusuario ID USUARIO CONTRASEÑA LINK</code>"
-      );
-      return;
-    }
-
-    await updateUserStatus(userId, "Usuario enviado", {
-      observaciones: `Usuario: ${usuario}`
-    });
-
-    await sendWhatsApp(
-      userId,
-      `✅ Tu acceso ya está listo
-
-👤 Usuario: ${usuario}
-🔐 Contraseña: ${password}
-🔗 Link: ${link}
-
-Cuando realices tu carga, enviá el comprobante por este mismo chat.`
-    );
-
-    await sendTelegram(
-      ADMIN_ID,
-      `✅ Usuario enviado correctamente a <code>${userId}</code>.`
-    );
-    return;
-  }
-
-  if (command === "/cargo") {
-    const [, userId, monto] = parts;
-
-    if (!userId || !monto) {
-      await sendTelegram(
-        ADMIN_ID,
-        "Uso correcto:\n<code>/cargo ID MONTO</code>"
-      );
-      return;
-    }
-
-    const ok = await updateUserStatus(userId, "Carga confirmada", {
-      sumarCarga: monto,
-      primeraCarga: monto,
-      fechaCarga: nowDate()
-    });
-
-    if (ok) {
-      await sendWhatsApp(
-        userId,
-        `✅ Carga confirmada.
-
-Tu acreditación ya fue revisada y actualizada correctamente.`
-      );
-
-      await sendTelegram(
-        ADMIN_ID,
-        `✅ Carga confirmada para <code>${userId}</code> por <b>${monto}</b>.`
-      );
-    }
-
-    return;
-  }
-
-  if (command === "/retiroconfirmado") {
-    const [, userId, monto] = parts;
-
-    if (!userId) {
-      await sendTelegram(
-        ADMIN_ID,
-        "Uso correcto:\n<code>/retiroconfirmado ID MONTO</code>"
-      );
-      return;
-    }
-
-    const ok = await updateUserStatus(userId, "Retiro confirmado", {
-      sumarRetiro: monto || 0,
-      ultimoRetiro: monto || "",
-      fechaRetiro: nowDate()
-    });
-
-    if (ok) {
-      await sendWhatsApp(
-        userId,
-        `✅ Retiro confirmado.
-
-La operación fue revisada correctamente.`
-      );
-
-      await sendTelegram(
-        ADMIN_ID,
-        `✅ Retiro confirmado para <code>${userId}</code>${monto ? ` por <b>${monto}</b>` : ""}.`
-      );
-    }
-
-    return;
-  }
-
-  if (command === "/responder") {
-    const [, userId, ...msgParts] = parts;
-    const mensaje = msgParts.join(" ");
-
-    if (!userId || !mensaje) {
-      await sendTelegram(
-        ADMIN_ID,
-        "Uso correcto:\n<code>/responder ID MENSAJE</code>"
-      );
-      return;
-    }
-
-    await sendWhatsApp(userId, mensaje);
-
-    await sendTelegram(
-      ADMIN_ID,
-      `💬 Mensaje enviado a <code>${userId}</code>.`
-    );
-    return;
-  }
-
-  if (command === "/perfil") {
-    const [, userId] = parts;
-
-    if (!userId) {
-      await sendTelegram(ADMIN_ID, "Uso correcto:\n<code>/perfil ID</code>");
-      return;
-    }
-
-    await sendProfile(userId);
-    return;
-  }
-
-  await sendTelegram(ADMIN_ID, "No entendí el comando. Usá /menu");
+1️⃣ Bet Space
+2️⃣ Ganamosnet Org
+3️⃣ Zeus (multi)
+0️⃣ Volver`;
 }
 
-async function sendProfile(userId) {
-  const found = await findUserRowById(userId);
+function benefitsText() {
+  return `🎁 Beneficios
 
-  if (!found) {
-    await sendTelegram(
-      ADMIN_ID,
-      `⚠️ No encontré el usuario <code>${userId}</code> en Sheets.`
-    );
-    return;
-  }
-
-  const r = found.row;
-
-  await sendTelegram(
-    ADMIN_ID,
-    `📋 <b>PERFIL DEL USUARIO</b>
-
-ID: <code>${userId}</code>
-Origen: ${r[1] || ""}
-Nombre WhatsApp: ${r[4] || ""}
-Nombre: ${r[5] || ""}
-Plataforma: ${r[6] || ""}
-Teléfono: ${r[7] || ""}
-País: ${r[8] || ""}
-Estado: ${r[9] || ""}
-
-Total cargado: ${r[14] || "0"}
-Total retirado: ${r[15] || "0"}
-Saldo neto: ${r[16] || "0"}
-
-VIP: ${r[19] || "NO"}
-Canal: ${r[20] || "NO"}`,
-    actionButtons(userId)
-  );
+1️⃣ Bono de Bienvenida
+2️⃣ Recomendación
+3️⃣ Fidelidad
+0️⃣ Volver`;
 }
 
-async function handleCallback(callbackQuery) {
-  const data = callbackQuery.data || "";
-  const callbackId = callbackQuery.id;
-  const [action, userId] = data.split(":");
-
-  await answerCallback(callbackId);
-
-  if (!userId) {
-    await sendTelegram(ADMIN_ID, "⚠️ Botón inválido.");
-    return;
-  }
-
-  if (action === "confirmar_carga") {
-    await sendTelegram(
-      ADMIN_ID,
-      `✅ Para confirmar carga usá:
-<code>/cargo ${userId} MONTO</code>`
-    );
-    return;
-  }
-
-  if (action === "enviar_usuario") {
-    await sendTelegram(
-      ADMIN_ID,
-      `👤 Para enviar usuario usá:
-<code>/enviarusuario ${userId} USUARIO CONTRASEÑA LINK</code>`
-    );
-    return;
-  }
-
-  if (action === "confirmar_retiro") {
-    await sendTelegram(
-      ADMIN_ID,
-      `💸 Para confirmar retiro usá:
-<code>/retiroconfirmado ${userId} MONTO</code>`
-    );
-    return;
-  }
-
-  if (action === "rechazar") {
-    const ok = await updateUserStatus(userId, "Rechazado");
-
-    if (ok) {
-      await sendWhatsApp(
-        userId,
-        "❌ Tu solicitud fue revisada y no pudo ser aprobada. Escribí nuevamente si necesitás ayuda."
-      );
-
-      await sendTelegram(
-        ADMIN_ID,
-        `❌ Solicitud rechazada para <code>${userId}</code>.`
-      );
-    }
-
-    return;
-  }
-
-  if (action === "ver_perfil") {
-    await sendProfile(userId);
-    return;
-  }
-
-  if (action === "responder") {
-    await sendTelegram(
-      ADMIN_ID,
-      `💬 Para responder usá:
-<code>/responder ${userId} MENSAJE</code>`
-    );
-    return;
-  }
-
-  await sendTelegram(ADMIN_ID, "⚠️ Acción no reconocida.");
+function normalizePlatform(text) {
+  if (text === "1") return "💫 Bet Space";
+  if (text === "2") return "🌟 Ganamosnet Org";
+  if (text === "3") return "⚡️ Zeus (multi)";
+  return null;
 }
 
 module.exports = async function handler(req, res) {
   try {
+    const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+
+    if (req.method === "GET") {
+      const mode = req.query["hub.mode"];
+      const token = req.query["hub.verify_token"];
+      const challenge = req.query["hub.challenge"];
+
+      if (mode === "subscribe" && token === VERIFY_TOKEN) {
+        return res.status(200).send(challenge);
+      }
+
+      return res.status(403).send("Forbidden");
+    }
+
     if (req.method !== "POST") {
-      return res.status(200).send("OK");
+      return res.status(405).send("Method Not Allowed");
     }
 
     const body = req.body;
-    console.log("Webhook Telegram recibido:", JSON.stringify(body, null, 2));
+    console.log("Webhook WhatsApp recibido:", JSON.stringify(body, null, 2));
 
-    if (body.callback_query) {
-      await handleCallback(body.callback_query);
-      return res.status(200).send("OK");
-    }
+    const value = body.entry?.[0]?.changes?.[0]?.value;
+    const message = value?.messages?.[0];
 
-    const message = body.message;
     if (!message) {
-      return res.status(200).send("OK");
+      return res.status(200).send("EVENT_RECEIVED");
     }
 
-    const chatId = String(message.chat.id);
-    const text = message.text || "";
+    const from = message.from;
+    const contactName = value?.contacts?.[0]?.profile?.name || "Sin nombre";
+    const text = message.text?.body?.trim() || "";
+    const session = sessions[from] || {};
+    const origen = "🟢 WHATSAPP";
 
-    if (chatId !== ADMIN_ID) {
-      await sendTelegram(chatId, "No autorizado.");
-      return res.status(200).send("OK");
+    if (text === "0" || text.toLowerCase() === "menu" || text.toLowerCase() === "hola") {
+      sessions[from] = {};
+      sendMetaEvent("BotStart", from, { source: origen });
+      await sendTelegram(ADMIN_ID, `👀 <b>WHATSAPP START</b>\n\nID: ${from}\nNombre: ${contactName}`);
+      await sendWhatsApp(from, mainMenuText());
+      return res.status(200).send("EVENT_RECEIVED");
     }
 
-    if (text) {
-      await handleCommand(text);
-      return res.status(200).send("OK");
+    if (text === "1" && !session.step) {
+      sessions[from] = { step: "name" };
+      sendMetaEvent("RegistroIniciado", from, { source: origen });
+      await sendTelegram(ADMIN_ID, `🎮 <b>REGISTRO INICIADO WHATSAPP</b>\n\nID: ${from}\nNombre: ${contactName}`);
+      await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuál es tu nombre?");
+      return res.status(200).send("EVENT_RECEIVED");
     }
 
-    if (message.photo || message.document) {
+    if (text === "2" && !session.step) {
+      sessions[from] = { step: "load_user" };
+      sendMetaEvent("CargaIniciada", from, { source: origen });
+      await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (text === "3" && !session.step) {
+      sessions[from] = { step: "withdraw_user" };
+      sendMetaEvent("RetiroIniciado", from, { source: origen });
+      await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (text === "4" && !session.step) {
+      sendMetaEvent("ContactoADM", from, { source: origen });
+      await sendWhatsApp(from, "Podés hablar con un administrador acá:\n\nhttps://t.me/Eliamcorona");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (text === "5" && !session.step) {
+      await updateUserStatus(from, null, { canalOficial: "SI" });
+      sendMetaEvent("CanalOficial", from, { source: origen });
+      await sendWhatsApp(from, "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (text === "6" && !session.step) {
+      sendMetaEvent("Beneficios", from, { source: origen });
+      await sendWhatsApp(from, benefitsText());
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "name") {
+      session.name = text;
+      session.step = "platform";
+      sessions[from] = session;
+      await sendWhatsApp(from, platformText());
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "platform") {
+      const platform = normalizePlatform(text);
+
+      if (!platform) {
+        await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+        return res.status(200).send("EVENT_RECEIVED");
+      }
+
+      session.platform = platform;
+      session.step = "phone";
+      sessions[from] = session;
+      await sendWhatsApp(from, "Ahora enviame tu teléfono de contacto:");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "phone") {
+      session.phone = text;
+      session.step = "country";
+      sessions[from] = session;
+      await sendWhatsApp(from, "¿De qué país sos?");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "country") {
+      session.country = text;
+      sessions[from] = {};
+
+      await saveUserToSheet({
+        origen,
+        whatsappId: from,
+        username: "",
+        nombreWhatsapp: contactName,
+        nombre: session.name,
+        plataforma: session.platform,
+        telefono: session.phone,
+        pais: session.country,
+        estado: "Registrado"
+      });
+
+      sendMetaEvent("CompleteRegistration", from, {
+        source: origen,
+        platform: session.platform,
+        country: session.country,
+        status: "Registrado"
+      });
+
+      sendMetaEvent("Lead", from, {
+        source: origen,
+        platform: session.platform,
+        country: session.country,
+        status: "Registrado"
+      });
+
       await sendTelegram(
         ADMIN_ID,
-        "📎 Archivo recibido en Telegram. Para asociarlo a un usuario, respondé con:\n<code>/responder ID MENSAJE</code>"
+        `🚨 <b>NUEVA SOLICITUD WHATSAPP</b>
+
+Origen: ${origen}
+👤 Nombre: ${session.name}
+🎮 Plataforma: ${session.platform}
+📞 Teléfono: ${session.phone}
+🌍 País: ${session.country}
+
+WhatsApp:
+ID: ${from}
+Nombre WhatsApp: ${contactName}
+
+Para enviar usuario usá:
+/enviarusuario ${from} USUARIO CONTRASEÑA LINK`
       );
-      return res.status(200).send("OK");
+
+      await sendWhatsApp(
+        from,
+        `✅ Solicitud recibida.
+
+Tu acceso está siendo preparado por un administrador.
+
+💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.
+
+📢 Mientras tanto podés unirte al canal oficial o solicitar acceso VIP.`
+      );
+
+      return res.status(200).send("EVENT_RECEIVED");
     }
 
-    return res.status(200).send("OK");
+    if (session.step === "load_user") {
+      session.loadUser = text;
+      session.step = "load_platform";
+      sessions[from] = session;
+      await sendWhatsApp(from, platformText());
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "load_platform") {
+      const platform = normalizePlatform(text);
+
+      if (!platform) {
+        await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+        return res.status(200).send("EVENT_RECEIVED");
+      }
+
+      session.loadPlatform = platform;
+      session.step = "waiting_receipt";
+      sessions[from] = session;
+
+      await updateUserStatus(from, "Carga solicitada");
+      sendMetaEvent("CargaSolicitada", from, { source: origen, platform });
+
+      await sendTelegram(
+        ADMIN_ID,
+        `💳 <b>SOLICITUD DE CARGA WHATSAPP</b>
+
+Origen: ${origen}
+👤 Usuario: ${session.loadUser}
+🎮 Plataforma: ${platform}
+
+WhatsApp:
+ID: ${from}
+Nombre: ${contactName}`
+      );
+
+      await sendWhatsApp(
+        from,
+        `💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`
+      );
+
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (message.image || message.document) {
+      await updateUserStatus(from, "Comprobante recibido");
+
+      sendMetaEvent("ComprobanteRecibido", from, {
+        status: "Comprobante recibido",
+        source: origen
+      });
+
+      await sendTelegram(
+        ADMIN_ID,
+        `📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>
+
+Origen: ${origen}
+ID: ${from}
+Nombre: ${contactName}
+
+Para confirmar carga usá:
+/cargo ${from} MONTO`
+      );
+
+      await sendWhatsApp(from, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "withdraw_user") {
+      session.withdrawUser = text;
+      session.step = "withdraw_platform";
+      sessions[from] = session;
+      await sendWhatsApp(from, platformText());
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "withdraw_platform") {
+      const platform = normalizePlatform(text);
+
+      if (!platform) {
+        await sendWhatsApp(from, "Elegí una plataforma válida:\n\n" + platformText());
+        return res.status(200).send("EVENT_RECEIVED");
+      }
+
+      session.withdrawPlatform = platform;
+      session.step = "withdraw_amount";
+      sessions[from] = session;
+      await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuánto querés retirar?");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    if (session.step === "withdraw_amount") {
+      session.withdrawAmount = text;
+      session.step = "withdraw_waiting_admin";
+      sessions[from] = session;
+
+      await updateUserStatus(from, "Retiro solicitado", {
+        ultimoRetiro: session.withdrawAmount,
+        fechaRetiro: nowDate()
+      });
+
+      sendMetaEvent("RetiroSolicitado", from, {
+        value: toNumber(session.withdrawAmount),
+        currency: "ARS",
+        source: origen,
+        platform: session.withdrawPlatform
+      });
+
+      await sendTelegram(
+        ADMIN_ID,
+        `🥳💸 <b>SOLICITUD DE RETIRO WHATSAPP</b>
+
+Origen: ${origen}
+👤 Usuario: ${session.withdrawUser}
+💰 Monto: ${session.withdrawAmount}
+🎮 Plataforma: ${session.withdrawPlatform}
+
+WhatsApp:
+ID: ${from}
+Nombre: ${contactName}
+
+Cuando retires las fichas, usá:
+/retiroconfirmado ${from}`
+      );
+
+      await sendWhatsApp(from, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación.");
+      return res.status(200).send("EVENT_RECEIVED");
+    }
+
+    await sendWhatsApp(from, mainMenuText());
+    return res.status(200).send("EVENT_RECEIVED");
   } catch (error) {
-    console.error("Error general Telegram webhook:", error);
-    return res.status(200).send("OK");
+    console.error("Error general whatsapp webhook:", error);
+    return res.status(200).send("EVENT_RECEIVED");
   }
 };
