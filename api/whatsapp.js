@@ -10,7 +10,7 @@ function nowDate() {
 
 function hashValue(value) {
   return createHash("sha256")
-    .update(String(value).trim().toLowerCase())
+    .update(String(value || "").trim().toLowerCase())
     .digest("hex");
 }
 
@@ -20,42 +20,53 @@ function toNumber(value) {
 }
 
 async function sendTelegram(chatId, text) {
-  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML"
-    })
-  });
+  try {
+    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" })
+    });
+  } catch (error) {
+    console.error("Error enviando Telegram:", error);
+  }
 }
 
 async function sendWhatsApp(to, text) {
-  const response = await fetch(
-    `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: text }
-      })
-    }
-  );
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "text",
+          text: { body: text }
+        })
+      }
+    );
 
-  const data = await response.json();
-  console.log("Respuesta WhatsApp:", data);
+    const data = await response.json();
+    console.log("WhatsApp Status:", response.status);
+    console.log("Respuesta WhatsApp:", JSON.stringify(data, null, 2));
+
+    return data;
+  } catch (error) {
+    console.error("Error enviando WhatsApp:", error);
+    return null;
+  }
 }
 
 async function sendMetaEvent(eventName, whatsappId, customData = {}) {
   try {
-    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+      console.log("Meta CAPI omitido: faltan variables.");
+      return;
+    }
 
     const payload = {
       data: [
@@ -86,7 +97,7 @@ async function sendMetaEvent(eventName, whatsappId, customData = {}) {
     );
 
     const result = await response.json();
-    console.log("Evento Meta:", eventName, result);
+    console.log("Evento Meta:", eventName, JSON.stringify(result, null, 2));
   } catch (error) {
     console.error("Error Meta CAPI:", error);
   }
@@ -116,7 +127,7 @@ async function saveUserToSheet(data) {
           nowDate(),
           data.origen,
           data.whatsappId,
-          data.username,
+          data.username || "",
           data.nombreWhatsapp,
           data.nombre,
           data.plataforma,
@@ -178,11 +189,6 @@ async function updateUserStatus(userId, status, extras = {}) {
     const row = found.row;
 
     const estado = status || row[9] || "";
-    const primeraCarga = extras.primeraCarga ?? row[10] ?? "";
-    const fechaCarga = extras.fechaCarga ?? row[11] ?? "";
-    const ultimoRetiro = extras.ultimoRetiro ?? row[12] ?? "";
-    const fechaRetiro = extras.fechaRetiro ?? row[13] ?? "";
-
     const totalCargadoActual = toNumber(row[14]);
     const totalRetiradoActual = toNumber(row[15]);
 
@@ -200,10 +206,10 @@ async function updateUserStatus(userId, status, extras = {}) {
       requestBody: {
         values: [[
           estado,
-          primeraCarga,
-          fechaCarga,
-          ultimoRetiro,
-          fechaRetiro,
+          extras.primeraCarga ?? row[10] ?? "",
+          extras.fechaCarga ?? row[11] ?? "",
+          extras.ultimoRetiro ?? row[12] ?? "",
+          extras.fechaRetiro ?? row[13] ?? "",
           totalCargado,
           totalRetirado,
           saldoNeto,
@@ -302,7 +308,7 @@ module.exports = async function handler(req, res) {
 
     if (text === "0" || text.toLowerCase() === "menu" || text.toLowerCase() === "hola") {
       sessions[from] = {};
-      await sendMetaEvent("BotStart", from, { source: origen });
+      sendMetaEvent("BotStart", from, { source: origen });
       await sendTelegram(ADMIN_ID, `👀 <b>WHATSAPP START</b>\n\nID: ${from}\nNombre: ${contactName}`);
       await sendWhatsApp(from, mainMenuText());
       return res.status(200).send("EVENT_RECEIVED");
@@ -310,7 +316,7 @@ module.exports = async function handler(req, res) {
 
     if (text === "1" && !session.step) {
       sessions[from] = { step: "name" };
-      await sendMetaEvent("RegistroIniciado", from, { source: origen });
+      sendMetaEvent("RegistroIniciado", from, { source: origen });
       await sendTelegram(ADMIN_ID, `🎮 <b>REGISTRO INICIADO WHATSAPP</b>\n\nID: ${from}\nNombre: ${contactName}`);
       await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuál es tu nombre?");
       return res.status(200).send("EVENT_RECEIVED");
@@ -318,33 +324,33 @@ module.exports = async function handler(req, res) {
 
     if (text === "2" && !session.step) {
       sessions[from] = { step: "load_user" };
-      await sendMetaEvent("CargaIniciada", from, { source: origen });
+      sendMetaEvent("CargaIniciada", from, { source: origen });
       await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
     if (text === "3" && !session.step) {
       sessions[from] = { step: "withdraw_user" };
-      await sendMetaEvent("RetiroIniciado", from, { source: origen });
+      sendMetaEvent("RetiroIniciado", from, { source: origen });
       await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
     if (text === "4" && !session.step) {
-      await sendMetaEvent("ContactoADM", from, { source: origen });
+      sendMetaEvent("ContactoADM", from, { source: origen });
       await sendWhatsApp(from, "Podés hablar con un administrador acá:\n\nhttps://t.me/Eliamcorona");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
     if (text === "5" && !session.step) {
       await updateUserStatus(from, null, { canalOficial: "SI" });
-      await sendMetaEvent("CanalOficial", from, { source: origen });
+      sendMetaEvent("CanalOficial", from, { source: origen });
       await sendWhatsApp(from, "📢 Canal Oficial\n\nUnite desde acá:\nhttps://t.me/redcoronabet");
       return res.status(200).send("EVENT_RECEIVED");
     }
 
     if (text === "6" && !session.step) {
-      await sendMetaEvent("Beneficios", from, { source: origen });
+      sendMetaEvent("Beneficios", from, { source: origen });
       await sendWhatsApp(from, benefitsText());
       return res.status(200).send("EVENT_RECEIVED");
     }
@@ -382,8 +388,7 @@ module.exports = async function handler(req, res) {
 
     if (session.step === "country") {
       session.country = text;
-      session.step = "done";
-      sessions[from] = session;
+      sessions[from] = {};
 
       await saveUserToSheet({
         origen,
@@ -397,14 +402,14 @@ module.exports = async function handler(req, res) {
         estado: "Registrado"
       });
 
-      await sendMetaEvent("CompleteRegistration", from, {
+      sendMetaEvent("CompleteRegistration", from, {
         source: origen,
         platform: session.platform,
         country: session.country,
         status: "Registrado"
       });
 
-      await sendMetaEvent("Lead", from, {
+      sendMetaEvent("Lead", from, {
         source: origen,
         platform: session.platform,
         country: session.country,
@@ -477,7 +482,7 @@ Sonia Raquel Gutierrez
       sessions[from] = session;
 
       await updateUserStatus(from, "Carga solicitada");
-      await sendMetaEvent("CargaSolicitada", from, { source: origen, platform });
+      sendMetaEvent("CargaSolicitada", from, { source: origen, platform });
 
       await sendTelegram(
         ADMIN_ID,
@@ -516,7 +521,7 @@ Sonia Raquel Gutierrez
     if (message.image || message.document) {
       await updateUserStatus(from, "Comprobante recibido");
 
-      await sendMetaEvent("ComprobanteRecibido", from, {
+      sendMetaEvent("ComprobanteRecibido", from, {
         status: "Comprobante recibido",
         source: origen
       });
@@ -570,7 +575,7 @@ Para confirmar carga usá:
         fechaRetiro: nowDate()
       });
 
-      await sendMetaEvent("RetiroSolicitado", from, {
+      sendMetaEvent("RetiroSolicitado", from, {
         value: toNumber(session.withdrawAmount),
         currency: "ARS",
         source: origen,
@@ -598,52 +603,10 @@ Cuando retires las fichas, usá:
       return res.status(200).send("EVENT_RECEIVED");
     }
 
-    if (session.step === "withdraw_cvu") {
-      session.withdrawCvu = text;
-      session.step = "withdraw_holder";
-      sessions[from] = session;
-      await sendWhatsApp(from, "Perfecto ✅\n\nAhora enviame el titular de la cuenta.");
-      return res.status(200).send("EVENT_RECEIVED");
-    }
-
-    if (session.step === "withdraw_holder") {
-      session.withdrawHolder = text;
-      session.step = "withdraw_bank";
-      sessions[from] = session;
-      await sendWhatsApp(from, "Bien ✅\n\nAhora enviame el nombre del banco o billetera.");
-      return res.status(200).send("EVENT_RECEIVED");
-    }
-
-    if (session.step === "withdraw_bank") {
-      session.withdrawBank = text;
-      session.step = "withdraw_done";
-      sessions[from] = session;
-
-      await sendTelegram(
-        ADMIN_ID,
-        `💸 <b>DATOS PARA ACREDITAR RETIRO WHATSAPP</b>
-
-Origen: ${origen}
-CVU/CBU: ${session.withdrawCvu}
-Titular: ${session.withdrawHolder}
-Banco/Billetera: ${session.withdrawBank}
-
-WhatsApp:
-ID: ${from}
-Nombre: ${contactName}
-
-Cuando pagues, usá:
-/retiropagado ${from}`
-      );
-
-      await sendWhatsApp(from, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación y te avisará por este chat.");
-      return res.status(200).send("EVENT_RECEIVED");
-    }
-
     await sendWhatsApp(from, mainMenuText());
     return res.status(200).send("EVENT_RECEIVED");
   } catch (error) {
     console.error("Error general whatsapp webhook:", error);
-    return res.status(500).send("Internal Server Error");
+    return res.status(200).send("EVENT_RECEIVED");
   }
 };
