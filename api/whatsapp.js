@@ -331,8 +331,6 @@ function normalizePlatform(text) {
   return null;
 }
 
-
-
 async function notifyAdmin(title, from, contactName, extra = "") {
   await sendTelegram(
     ADMIN_ID,
