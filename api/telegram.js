@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { createHash } from "crypto";
 
 const ADMIN_ID = "8291674623";
 const sessions = {};
@@ -17,6 +18,59 @@ function nowDate() {
   return new Date().toLocaleString("es-AR");
 }
 
+function hashValue(value) {
+  return createHash("sha256")
+    .update(String(value || "").trim().toLowerCase())
+    .digest("hex");
+}
+
+function toNumber(value) {
+  const n = Number(String(value || "").replace(/[^\d.,]/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function sendMetaEvent(eventName, userId, customData = {}) {
+  try {
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+      console.log("Meta omitido: faltan META_PIXEL_ID o META_ACCESS_TOKEN");
+      return;
+    }
+
+    const payload = {
+      data: [
+        {
+          event_name: eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "system_generated",
+          event_id: `${eventName}_${userId}_${Date.now()}`,
+          user_data: {
+            external_id: [hashValue(userId)]
+          },
+          custom_data: customData
+        }
+      ]
+    };
+
+    if (process.env.META_TEST_EVENT_CODE) {
+      payload.test_event_code = process.env.META_TEST_EVENT_CODE;
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result = await response.json();
+    console.log("Evento Meta:", eventName, JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error("Error Meta CAPI:", error);
+  }
+}
+
 async function sendMessage(chatId, text, keyboard = null) {
   const body = { chat_id: chatId, text, parse_mode: "HTML" };
   if (keyboard) body.reply_markup = keyboard;
@@ -30,6 +84,9 @@ async function sendMessage(chatId, text, keyboard = null) {
 
 function getSheetsClient() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+  if (credentials.private_key) {
+    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+  }
 
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -202,8 +259,14 @@ export default async function handler(req, res) {
         fechaCarga: nowDate()
       });
 
+      await sendMetaEvent("Purchase", userId, {
+        source: "telegram_admin_button",
+        status: "Cargó",
+        currency: "ARS"
+      });
+
       await sendMessage(userId, "✅ Tu carga fue confirmada.\n\nFichas cargadas correctamente.\n\nMuchas gracias.");
-      await sendMessage(adminChatId, "✅ Confirmación enviada al usuario y estado actualizado en Sheets.");
+      await sendMessage(adminChatId, "✅ Confirmación enviada al usuario, Sheets actualizado y Purchase enviado a Meta.");
       return res.status(200).json({ ok: true });
     }
 
@@ -263,8 +326,13 @@ export default async function handler(req, res) {
 
     await updateUserStatus(userId, "Usuario enviado");
 
+    await sendMetaEvent("CompleteRegistration", userId, {
+      source: "telegram_admin",
+      status: "Usuario enviado"
+    });
+
     await sendMessage(userId, `✅ <b>Tu acceso ya está listo</b>\n\n👤 Usuario: ${user}\n🔐 Contraseña: ${pass}\n🔗 Link: ${link}\n\nCuando realices tu carga, enviá el comprobante por este mismo chat.`);
-    await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente y estado actualizado en Sheets.");
+    await sendMessage(ADMIN_ID, "✅ Usuario enviado correctamente, Sheets actualizado y CompleteRegistration enviado a Meta.");
     return res.status(200).json({ ok: true });
   }
 
@@ -283,7 +351,14 @@ export default async function handler(req, res) {
       fechaCarga: nowDate()
     });
 
-    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Cargó.");
+    await sendMetaEvent("Purchase", userId, {
+      value: toNumber(amount),
+      currency: "ARS",
+      source: "telegram_admin_command",
+      status: "Cargó"
+    });
+
+    await sendMessage(ADMIN_ID, "✅ Estado actualizado: Cargó. Purchase enviado a Meta.");
     return res.status(200).json({ ok: true });
   }
 
@@ -409,6 +484,10 @@ export default async function handler(req, res) {
     const startSource = text.startsWith("/start") ? getStartSource(text) : source;
     const startSourceLabel = getSourceLabel(startSource);
 
+    await sendMetaEvent("BotStart", chatId, {
+      source: startSourceLabel
+    });
+
     await sendMessage(
       ADMIN_ID,
       `👀 <b>BOT START</b>\n\nOrigen: ${startSourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
@@ -421,6 +500,10 @@ export default async function handler(req, res) {
   }
 
   if (text === "🎮 Crear Usuario" || text === "/registro") {
+    await sendMetaEvent("RegistroIniciado", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(
       ADMIN_ID,
       `🎮 <b>REGISTRO INICIADO</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`
@@ -433,6 +516,11 @@ export default async function handler(req, res) {
 
   if (text === "💳 Cargar") {
     sessions[chatId] = { step: "load_user", source };
+
+    await sendMetaEvent("CargaIniciada", chatId, {
+      source: sourceLabel
+    });
+
     await sendMessage(chatId, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
     return res.status(200).json({ ok: true });
   }
@@ -660,6 +748,13 @@ Sonia Raquel Gutierrez
       telefono: session.phone,
       pais: session.country,
       estado: "Registrado"
+    });
+
+    await sendMetaEvent("Lead", chatId, {
+      source: sessionSourceLabel,
+      platform: session.platform,
+      country: session.country,
+      status: "Registrado"
     });
 
     await sendMessage(
