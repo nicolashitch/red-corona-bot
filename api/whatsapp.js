@@ -1,7 +1,6 @@
 import { createHash } from "crypto";
 
 const ADMIN_ID = "8291674623";
-
 const sessions = {};
 
 function hashValue(value) {
@@ -11,105 +10,82 @@ function hashValue(value) {
 }
 
 async function sendTelegram(chatId, text, keyboard = null) {
-  try {
-    const body = {
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML"
-    };
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML"
+  };
 
-    if (keyboard) {
-      body.reply_markup = keyboard;
-    }
+  if (keyboard) body.reply_markup = keyboard;
 
-    await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      }
-    );
-  } catch (error) {
-    console.error("Telegram Error:", error);
-  }
+  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
 }
 
 async function sendWhatsApp(to, text) {
-  try {
-    const response = await fetch(
-      `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: {
-            body: text
-          }
-        })
-      }
-    );
+  const response = await fetch(
+    `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: String(to),
+        type: "text",
+        text: { body: text }
+      })
+    }
+  );
 
-    const data = await response.json();
-
-    console.log(
-      "WhatsApp Response:",
-      JSON.stringify(data, null, 2)
-    );
-
-    return data;
-  } catch (error) {
-    console.error("WhatsApp Error:", error);
-  }
+  const data = await response.json();
+  console.log("WhatsApp Response:", JSON.stringify(data, null, 2));
+  return data;
 }
 
-async function sendMetaLead(userId, platform) {
+async function sendMetaEvent(eventName, userId, customData = {}) {
   try {
-    if (
-      !process.env.META_PIXEL_ID ||
-      !process.env.META_ACCESS_TOKEN
-    ) {
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+      console.log("Meta CAPI omitido: faltan variables.");
       return;
     }
 
     const payload = {
       data: [
         {
-          event_name: "Lead",
+          event_name: eventName,
           event_time: Math.floor(Date.now() / 1000),
           action_source: "system_generated",
           user_data: {
             external_id: [hashValue(userId)]
           },
-          custom_data: {
-            platform
-          }
+          custom_data: customData
         }
       ]
     };
 
-    await fetch(
+    if (process.env.META_TEST_EVENT_CODE) {
+      payload.test_event_code = process.env.META_TEST_EVENT_CODE;
+    }
+
+    const response = await fetch(
       `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       }
     );
 
-    console.log("Lead enviado:", userId);
+    const result = await response.json();
+    console.log("Meta Event:", eventName, JSON.stringify(result, null, 2));
   } catch (error) {
-    console.error("Meta Lead Error:", error);
+    console.error("Meta Event Error:", error);
   }
 }
 
@@ -124,11 +100,18 @@ Elegí una opción:
 }
 
 function platformMenu() {
-  return `🎮 Elegí una plataforma
+  return `🎮 Elegí una plataforma:
 
 1️⃣ Bet Space
 2️⃣ Ganamosnet Org
 3️⃣ Zeus`;
+}
+
+function getPlatform(text) {
+  if (text === "1") return "Bet Space";
+  if (text === "2") return "Ganamosnet Org";
+  if (text === "3") return "Zeus";
+  return null;
 }
 
 function adminButtons(userId) {
@@ -139,96 +122,83 @@ function adminButtons(userId) {
           text: "📩 Enviar usuario",
           callback_data: `enviar_usuario_${userId}`
         }
+      ],
+      [
+        {
+          text: "✅ Confirmar carga",
+          callback_data: `confirmar_carga_${userId}`
+        }
       ]
     ]
   };
 }
 
-function getPlatform(text) {
-  if (text === "1") return "Bet Space";
-  if (text === "2") return "Ganamosnet Org";
-  if (text === "3") return "Zeus";
-  return null;
+async function finishLead(from, contactName, session) {
+  await sendMetaEvent("Lead", from, {
+    source: "whatsapp",
+    nombre: session.name,
+    platform: session.platform
+  });
+
+  await sendTelegram(
+    ADMIN_ID,
+    `🚨 <b>NUEVO LEAD WHATSAPP</b>
+
+Origen: 🟢 WHATSAPP
+👤 Nombre: ${session.name}
+🎮 Plataforma: ${session.platform}
+
+WhatsApp:
+ID: <code>${from}</code>
+Nombre WhatsApp: ${contactName}
+
+Lead enviado a Meta ✅`,
+    adminButtons(from)
+  );
+
+  await sendWhatsApp(
+    from,
+    `✅ Solicitud recibida.
+
+Tu acceso está siendo preparado por un administrador.
+
+⏳ Te contactaremos a la brevedad.`
+  );
+
+  delete sessions[from];
 }
 
-async function handleRegistration(
-  from,
-  contactName,
-  text
-) {
+async function handleSession(from, contactName, text) {
   const session = sessions[from];
 
-  if (!session) {
-    sessions[from] = {
-      step: "name"
-    };
-
-    await sendWhatsApp(
-      from,
-      "👋 Bienvenido.\n\n¿Cuál es tu nombre?"
-    );
-
-    return;
-  }
+  if (!session) return false;
 
   if (session.step === "name") {
     session.name = text;
     session.step = "platform";
 
-    await sendWhatsApp(
-      from,
-      platformMenu()
-    );
-
-    return;
+    await sendWhatsApp(from, platformMenu());
+    return true;
   }
 
   if (session.step === "platform") {
     const platform = getPlatform(text);
 
     if (!platform) {
-      await sendWhatsApp(
-        from,
-        platformMenu()
-      );
-      return;
+      await sendWhatsApp(from, "Elegí una opción válida:\n\n" + platformMenu());
+      return true;
     }
 
     session.platform = platform;
     session.step = "completed";
 
-    await sendMetaLead(
-      from,
-      platform
-    );
-
-    await sendTelegram(
-      ADMIN_ID,
-      `🚨 <b>NUEVO LEAD WHATSAPP</b>
-
-👤 Nombre: ${session.name}
-🎮 Plataforma: ${platform}
-
-WhatsApp:
-${from}
-${contactName}`,
-      adminButtons(from)
-    );
-
-    await sendWhatsApp(
-      from,
-      `✅ Solicitud recibida.
-
-Tu acceso está siendo preparado por un administrador.
-
-⏳ Te contactaremos a la brevedad.`
-    );
-
-    delete sessions[from];
-
-    return;
+    await finishLead(from, contactName, session);
+    return true;
   }
+
+  return false;
 }
+
 export default async function handler(req, res) {
   try {
     const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -238,10 +208,7 @@ export default async function handler(req, res) {
       const token = req.query["hub.verify_token"];
       const challenge = req.query["hub.challenge"];
 
-      if (
-        mode === "subscribe" &&
-        token === VERIFY_TOKEN
-      ) {
+      if (mode === "subscribe" && token === VERIFY_TOKEN) {
         return res.status(200).send(challenge);
       }
 
@@ -253,16 +220,9 @@ export default async function handler(req, res) {
     }
 
     const body = req.body;
+    console.log("Webhook WhatsApp recibido:", JSON.stringify(body, null, 2));
 
-    console.log(
-      "Webhook WhatsApp recibido:",
-      JSON.stringify(body, null, 2)
-    );
-
-    const entry = body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
-
+    const value = body.entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
 
     if (!message) {
@@ -270,37 +230,31 @@ export default async function handler(req, res) {
     }
 
     const from = message.from;
-
-    const contactName =
-      value?.contacts?.[0]?.profile?.name ||
-      "Sin nombre";
-
-    const text =
-      message.text?.body?.trim() || "";
+    const contactName = value?.contacts?.[0]?.profile?.name || "Sin nombre";
+    const text = message.text?.body?.trim() || "";
 
     if (!text) {
       return res.status(200).send("EVENT_RECEIVED");
     }
 
-    if (
-      text.toLowerCase() === "hola" ||
-      text.toLowerCase() === "menu" ||
-      text.toLowerCase() === "menú"
-    ) {
+    const lower = text.toLowerCase();
+
+    if (lower === "hola" || lower === "menu" || lower === "menú" || text === "0") {
       delete sessions[from];
+      await sendWhatsApp(from, mainMenu());
+      return res.status(200).send("EVENT_RECEIVED");
+    }
 
-      await sendWhatsApp(
-        from,
-        mainMenu()
-      );
-
+    // IMPORTANTE:
+    // Primero revisamos si el usuario está dentro de un flujo.
+    // Esto evita que "2" se confunda con Canal Oficial cuando está eligiendo plataforma.
+    if (sessions[from]) {
+      await handleSession(from, contactName, text);
       return res.status(200).send("EVENT_RECEIVED");
     }
 
     if (text === "1") {
-      sessions[from] = {
-        step: "name"
-      };
+      sessions[from] = { step: "name" };
 
       await sendWhatsApp(
         from,
@@ -328,30 +282,10 @@ export default async function handler(req, res) {
       return res.status(200).send("EVENT_RECEIVED");
     }
 
-    if (sessions[from]) {
-      await handleRegistration(
-        from,
-        contactName,
-        text
-      );
-
-      return res.status(200).send("EVENT_RECEIVED");
-    }
-
-    await sendWhatsApp(
-      from,
-      mainMenu()
-    );
-
+    await sendWhatsApp(from, mainMenu());
     return res.status(200).send("EVENT_RECEIVED");
   } catch (error) {
-    console.error(
-      "Error general whatsapp webhook:",
-      error
-    );
-
-    return res
-      .status(200)
-      .send("EVENT_RECEIVED");
+    console.error("Error general whatsapp webhook:", error);
+    return res.status(200).send("EVENT_RECEIVED");
   }
 }
