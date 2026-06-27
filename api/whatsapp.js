@@ -20,9 +20,7 @@ function toNumber(value) {
 
 function getCredentials() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-  if (credentials.private_key) {
-    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
-  }
+  if (credentials.private_key) credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
   return credentials;
 }
 
@@ -35,43 +33,47 @@ function getSheetsClient() {
 }
 
 async function sendWhatsApp(to, text) {
-  const response = await fetch(
-    `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: String(to),
-        type: "text",
-        text: { body: text }
-      })
-    }
-  );
+  const response = await fetch(`https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: String(to),
+      type: "text",
+      text: { body: text }
+    })
+  });
 
   const data = await response.json();
   console.log("WhatsApp:", JSON.stringify(data, null, 2));
   return data;
 }
 
-async function sendTelegram(text) {
+async function sendTelegram(text, keyboard = null) {
+  const body = {
+    chat_id: ADMIN_ID,
+    text,
+    parse_mode: "HTML"
+  };
+
+  if (keyboard) body.reply_markup = keyboard;
+
   await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: ADMIN_ID,
-      text,
-      parse_mode: "HTML"
-    })
+    body: JSON.stringify(body)
   });
 }
 
 async function sendMetaEvent(eventName, userId, customData = {}) {
   try {
-    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) return;
+    if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+      console.log("Meta omitido: faltan variables.");
+      return;
+    }
 
     const payload = {
       data: [
@@ -106,6 +108,21 @@ async function sendMetaEvent(eventName, userId, customData = {}) {
   } catch (error) {
     console.error("Error Meta:", error);
   }
+}
+
+function adminButtons(userId) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📩 Enviar usuario", callback_data: `enviar_usuario_${userId}` },
+        { text: "✅ Confirmar carga", callback_data: `confirmar_carga_${userId}` }
+      ],
+      [
+        { text: "💸 Retiro realizado", callback_data: `retiro_realizado_${userId}` },
+        { text: "✅ Pago enviado", callback_data: `pago_enviado_${userId}` }
+      ]
+    ]
+  };
 }
 
 async function getRows() {
@@ -169,13 +186,12 @@ async function getOrCreateUser(userId, contactName) {
 
 async function saveRow(rowNumber, row) {
   const sheets = getSheetsClient();
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: process.env.GOOGLE_SHEETS_ID,
     range: `A${rowNumber}:N${rowNumber}`,
     valueInputOption: "USER_ENTERED",
-    requestBody: {
-      values: [normalizeRow(row)]
-    }
+    requestBody: { values: [normalizeRow(row)] }
   });
 }
 
@@ -189,6 +205,7 @@ async function updateUser(userId, contactName, updates = {}) {
   row[4] = contactName || row[4] || "";
   row[7] = userId;
 
+  if (updates.username !== undefined) row[3] = updates.username;
   if (updates.nombre !== undefined) row[5] = updates.nombre;
   if (updates.plataforma !== undefined) row[6] = updates.plataforma;
   if (updates.pais !== undefined) row[8] = updates.pais;
@@ -252,12 +269,14 @@ async function handleText(from, contactName, text) {
       nombre: text,
       estado: "REG_PLATAFORMA"
     });
+
     await sendWhatsApp(from, platformMenu());
     return;
   }
 
   if (estado === "REG_PLATAFORMA") {
     const platform = getPlatform(text);
+
     if (!platform) {
       await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
       return;
@@ -274,13 +293,8 @@ async function handleText(from, contactName, text) {
       status: "Registrado"
     });
 
-    await sendMetaEvent("CompleteRegistration", from, {
-      source: "whatsapp",
-      platform,
-      status: "Usuario creado"
-    });
-
-    await sendTelegram(`🚨 <b>NUEVO USUARIO WHATSAPP</b>
+    await sendTelegram(
+      `🚨 <b>NUEVO USUARIO WHATSAPP</b>
 
 Origen: 🟢 WHATSAPP
 ID: <code>${from}</code>
@@ -289,10 +303,12 @@ Nombre WhatsApp: ${contactName}
 👤 Nombre: ${updated[5]}
 🎮 Plataforma: ${platform}
 
-✅ Lead + CompleteRegistration enviados a Meta.
+✅ Lead enviado a Meta.
 
 Para enviar usuario:
-<code>/enviarusuario ${from} USUARIO CONTRASEÑA LINK</code>`);
+<code>/enviarusuario ${from} USUARIO CONTRASEÑA LINK</code>`,
+      adminButtons(from)
+    );
 
     await sendWhatsApp(from, `✅ Solicitud recibida.
 
@@ -304,12 +320,9 @@ Tu acceso está siendo preparado por un administrador.
 
   if (estado === "CARGA_USUARIO") {
     await updateUser(from, contactName, {
-      nombre: row[5] || contactName,
+      username: text,
       estado: "CARGA_PLATAFORMA"
     });
-
-    row[3] = text;
-    await saveRow(found.rowNumber, row);
 
     await sendWhatsApp(from, platformMenu());
     return;
@@ -317,6 +330,7 @@ Tu acceso está siendo preparado por un administrador.
 
   if (estado === "CARGA_PLATAFORMA") {
     const platform = getPlatform(text);
+
     if (!platform) {
       await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
       return;
@@ -344,6 +358,20 @@ Tu acceso está siendo preparado por un administrador.
       currency: "ARS"
     });
 
+    await sendTelegram(
+      `💳 <b>CARGA INICIADA WHATSAPP</b>
+
+ID: <code>${from}</code>
+Nombre WhatsApp: ${contactName}
+Usuario: ${row[3] || ""}
+Monto declarado: ${text}
+
+✅ InitiateCheckout enviado a Meta.
+
+Esperando comprobante.`,
+      adminButtons(from)
+    );
+
     await sendWhatsApp(from, `💳 DATOS PARA CARGAR
 
 🏦 Alias:
@@ -359,7 +387,50 @@ Sonia Raquel Gutierrez
     return;
   }
 
-  if (estado === "MENU" || estado === "Registrado" || estado === "Usuario enviado" || estado === "Cargó") {
+  if (estado === "Retiro solicitado") {
+    await updateUser(from, contactName, {
+      estado: "RETIRO_TITULAR",
+      primerRetiro: `${row[12] || ""}\nCVU/CBU: ${text}`
+    });
+
+    await sendWhatsApp(from, "Perfecto ✅\n\nAhora enviame el titular de la cuenta.");
+    return;
+  }
+
+  if (estado === "RETIRO_TITULAR") {
+    await updateUser(from, contactName, {
+      estado: "RETIRO_BANCO",
+      primerRetiro: `${row[12] || ""}\nTitular: ${text}`
+    });
+
+    await sendWhatsApp(from, "Bien ✅\n\nAhora enviame el banco o billetera.");
+    return;
+  }
+
+  if (estado === "RETIRO_BANCO") {
+    const updated = await updateUser(from, contactName, {
+      estado: "RETIRO_DATOS_RECIBIDOS",
+      primerRetiro: `${row[12] || ""}\nBanco/Billetera: ${text}`
+    });
+
+    await sendTelegram(
+      `💸 <b>DATOS PARA ACREDITAR RETIRO WHATSAPP</b>
+
+ID: <code>${from}</code>
+Nombre WhatsApp: ${contactName}
+
+${updated[12] || ""}
+
+Cuando pagues, usá:
+<code>/comprobantepago ${from}</code>`,
+      adminButtons(from)
+    );
+
+    await sendWhatsApp(from, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación.");
+    return;
+  }
+
+  if (estado === "MENU" || estado === "Registrado" || estado === "Usuario enviado" || estado === "Cargó" || estado === "Comprobante recibido") {
     if (text === "1") {
       await updateUser(from, contactName, { estado: "REG_NOMBRE" });
       await sendMetaEvent("RegistroIniciado", from, { source: "whatsapp" });
@@ -375,11 +446,8 @@ Sonia Raquel Gutierrez
     }
 
     if (text === "3") {
-      await sendTelegram(`🥳💸 <b>SOLICITUD DE RETIRO WHATSAPP</b>
-
-ID: <code>${from}</code>
-Nombre WhatsApp: ${contactName}`);
-      await sendWhatsApp(from, "✅ Un administrador fue notificado por tu retiro.");
+      await updateUser(from, contactName, { estado: "RETIRO_USUARIO" });
+      await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
       return;
     }
 
@@ -387,7 +455,8 @@ Nombre WhatsApp: ${contactName}`);
       await sendTelegram(`👨‍💼 <b>CLIENTE PIDE ADM WHATSAPP</b>
 
 ID: <code>${from}</code>
-Nombre WhatsApp: ${contactName}`);
+Nombre WhatsApp: ${contactName}`, adminButtons(from));
+
       await sendWhatsApp(from, "👨‍💼 Un administrador fue notificado.\n\nTambién podés escribir por Telegram:\nhttps://t.me/Eliamcorona");
       return;
     }
@@ -403,6 +472,59 @@ Nombre WhatsApp: ${contactName}`);
     }
   }
 
+  if (estado === "RETIRO_USUARIO") {
+    await updateUser(from, contactName, {
+      username: text,
+      estado: "RETIRO_PLATAFORMA"
+    });
+
+    await sendWhatsApp(from, platformMenu());
+    return;
+  }
+
+  if (estado === "RETIRO_PLATAFORMA") {
+    const platform = getPlatform(text);
+
+    if (!platform) {
+      await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
+      return;
+    }
+
+    await updateUser(from, contactName, {
+      plataforma: platform,
+      estado: "RETIRO_MONTO"
+    });
+
+    await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuánto querés retirar?");
+    return;
+  }
+
+  if (estado === "RETIRO_MONTO") {
+    const updated = await updateUser(from, contactName, {
+      primerRetiro: text,
+      fechaRetiro: nowDate(),
+      estado: "RETIRO_SOLICITADO"
+    });
+
+    await sendTelegram(
+      `🥳💸 <b>SOLICITUD DE RETIRO WHATSAPP</b>
+
+ID: <code>${from}</code>
+Nombre WhatsApp: ${contactName}
+
+👤 Usuario: ${updated[3] || ""}
+🎮 Plataforma: ${updated[6] || ""}
+💰 Monto: ${text}
+
+Cuando retires las fichas, usá el botón o:
+<code>/retiroconfirmado ${from}</code>`,
+      adminButtons(from)
+    );
+
+    await sendWhatsApp(from, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.");
+    return;
+  }
+
   await sendWhatsApp(from, mainMenu());
 }
 
@@ -416,24 +538,19 @@ async function handleMedia(from, contactName) {
     fechaCarga: nowDate()
   });
 
-  await sendMetaEvent("Purchase", from, {
-    source: "whatsapp",
-    value: toNumber(amount),
-    currency: "ARS",
-    status: "Comprobante recibido"
-  });
+  await sendTelegram(
+    `📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>
 
-  await sendTelegram(`📎 <b>COMPROBANTE RECIBIDO WHATSAPP</b>
-
-Origen: 🟢 WHATSAPP
 ID: <code>${from}</code>
 Nombre WhatsApp: ${contactName}
+Usuario: ${row[3] || ""}
+Plataforma: ${row[6] || ""}
 Monto declarado: ${amount || "Sin monto"}
 
-✅ Purchase enviado a Meta.
-
-Para confirmar en Sheets:
-<code>/cargo ${from} ${amount || "MONTO"}</code>`);
+Para confirmar carga:
+<code>/cargo ${from} ${amount || "MONTO"}</code>`,
+    adminButtons(from)
+  );
 
   await sendWhatsApp(from, "✅ Comprobante recibido.\n\nUn administrador lo revisará y confirmará tu carga.");
 }
