@@ -314,7 +314,20 @@ Para enviar usuario:
 
 Tu acceso está siendo preparado por un administrador.
 
-⏳ Te contactaremos a la brevedad.`);
+💳 DATOS PARA CARGAR
+
+🏦 Alias:
+redcoronabet7
+
+🔢 CVU:
+000177500393009854128
+
+👤 Titular:
+Sonia Raquel Gutierrez
+
+✅ Luego de transferir, enviá el comprobante por este mismo chat.
+
+⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`);
     return;
   }
 
