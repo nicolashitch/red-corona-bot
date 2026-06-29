@@ -85,7 +85,9 @@ async function sendMetaEvent(eventName, userId, customData = {}) {
           user_data: {
             external_id: [hashValue(userId)]
           },
-          custom_data: customData
+          custom_data: eventName === "Purchase"
+  ? { value: customData.value || 1, currency: customData.currency || "USD", ...customData }
+  : customData
         }
       ]
     };
