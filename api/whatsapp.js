@@ -86,8 +86,8 @@ async function sendMetaEvent(eventName, userId, customData = {}) {
             external_id: [hashValue(userId)]
           },
           custom_data: eventName === "Purchase"
-  ? { value: customData.value || 1, currency: customData.currency || "USD", ...customData }
-  : customData
+            ? { value: customData.value || 1, currency: customData.currency || "USD", ...customData }
+            : customData
         }
       ]
     };
@@ -122,6 +122,10 @@ function adminButtons(userId) {
       [
         { text: "💸 Retiro realizado", callback_data: `retiro_realizado_${userId}` },
         { text: "✅ Pago enviado", callback_data: `pago_enviado_${userId}` }
+      ],
+      [
+        { text: "✍️ Mensaje libre", callback_data: `mensaje_libre_${userId}` },
+        { text: "❌ Rechazar", callback_data: `rechazar_${userId}` }
       ]
     ]
   };
@@ -445,7 +449,7 @@ Cuando pagues, usá:
     return;
   }
 
-  if (estado === "MENU" || estado === "Registrado" || estado === "Usuario enviado" || estado === "Cargó" || estado === "Comprobante recibido") {
+  if (estado === "MENU" || estado === "Registrado" || estado === "Usuario enviado" || estado === "Cargó" || estado === "Comprobante recibido" || estado === "Rechazado") {
     if (text === "1") {
       await updateUser(from, contactName, { estado: "REG_NOMBRE" });
       await sendMetaEvent("RegistroIniciado", from, { source: "whatsapp" });
