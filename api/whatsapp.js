@@ -122,11 +122,14 @@ function adminButtons(userId) {
       [
         { text: "💸 Retiro realizado", callback_data: `retiro_realizado_${userId}` },
         { text: "✅ Pago enviado", callback_data: `pago_enviado_${userId}` }
+      ],
+      [
+        { text: "❌ Rechazar", callback_data: `rechazar_${userId}` },
+        { text: "✍️ Mensaje libre", callback_data: `mensaje_libre_${userId}` }
       ]
     ]
   };
 }
-
 async function getRows() {
   const sheets = getSheetsClient();
   const response = await sheets.spreadsheets.values.get({
