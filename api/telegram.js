@@ -34,6 +34,25 @@ function isWhatsAppId(userId) {
   return /^\d{10,15}$/.test(String(userId || ""));
 }
 
+function adminButtons(userId) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📩 Enviar usuario", callback_data: `enviar_usuario_${userId}` },
+        { text: "✅ Confirmar carga", callback_data: `confirmar_carga_${userId}` }
+      ],
+      [
+        { text: "💸 Retiro realizado", callback_data: `retiro_realizado_${userId}` },
+        { text: "✅ Pago enviado", callback_data: `pago_enviado_${userId}` }
+      ],
+      [
+        { text: "✍️ Mensaje libre", callback_data: `mensaje_libre_${userId}` },
+        { text: "❌ Rechazar", callback_data: `rechazar_${userId}` }
+      ]
+    ]
+  };
+}
+
 async function sendMetaEvent(eventName, userId, customData = {}) {
   try {
     if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
@@ -281,6 +300,54 @@ export default async function handler(req, res) {
     const data = update.callback_query.data;
     const adminChatId = update.callback_query.message.chat.id;
 
+    if (data.startsWith("mensaje_libre_")) {
+      const userId = data.replace("mensaje_libre_", "");
+
+      sessions[ADMIN_ID] = {
+        step: "admin_free_message",
+        targetUserId: userId
+      };
+
+      await sendMessage(
+        adminChatId,
+        `✍️ <b>Mensaje libre activado</b>
+
+Ahora escribí el mensaje que querés enviarle al usuario:
+
+ID: <code>${userId}</code>
+
+El próximo mensaje que escribas se enviará directo al usuario.`
+      );
+
+      return res.status(200).json({ ok: true });
+    }
+
+    if (data.startsWith("rechazar_")) {
+      const userId = data.replace("rechazar_", "");
+
+      await updateUserStatus(userId, "Rechazado");
+
+      await sendToUser(
+        userId,
+        `❌ Solicitud rechazada
+
+Un administrador revisó tu solicitud y fue rechazada.
+
+Si creés que hubo un error o querés hacer una nueva consulta, podés escribir nuevamente por este chat.`
+      );
+
+      await sendMessage(
+        adminChatId,
+        `❌ Solicitud rechazada.
+
+ID: <code>${userId}</code>
+
+El usuario fue notificado y Sheets fue actualizado.`
+      );
+
+      return res.status(200).json({ ok: true });
+    }
+
     if (data.startsWith("confirmar_carga_")) {
       const userId = data.replace("confirmar_carga_", "");
 
@@ -335,6 +402,67 @@ export default async function handler(req, res) {
   const currentSession = sessions[chatId] || {};
   const source = currentSession.source || "direct";
   const sourceLabel = getSourceLabel(source);
+
+  if (String(chatId) === ADMIN_ID && sessions[ADMIN_ID]?.step === "admin_free_message") {
+    const userId = sessions[ADMIN_ID].targetUserId;
+
+    if (!text.trim()) {
+      await sendMessage(ADMIN_ID, "⚠️ Tenés que escribir un mensaje de texto para enviar.");
+      return res.status(200).json({ ok: true });
+    }
+
+    await sendToUser(userId, text);
+    await sendMessage(ADMIN_ID, `✅ Mensaje libre enviado correctamente.
+
+ID: <code>${userId}</code>`);
+    sessions[ADMIN_ID] = {};
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/mensaje") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+
+    if (parts.length < 3) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/mensaje ID TEXTO DEL MENSAJE");
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+    const message = parts.slice(2).join(" ");
+
+    await sendToUser(userId, message);
+    await sendMessage(ADMIN_ID, `✅ Mensaje enviado correctamente.
+
+ID: <code>${userId}</code>`);
+    return res.status(200).json({ ok: true });
+  }
+
+  if (text.startsWith("/rechazar") && String(chatId) === ADMIN_ID) {
+    const parts = text.split(" ");
+
+    if (parts.length < 2) {
+      await sendMessage(ADMIN_ID, "Formato incorrecto.\n\nUsá:\n/rechazar ID");
+      return res.status(200).json({ ok: true });
+    }
+
+    const userId = parts[1];
+
+    await updateUserStatus(userId, "Rechazado");
+
+    await sendToUser(
+      userId,
+      `❌ Solicitud rechazada
+
+Un administrador revisó tu solicitud y fue rechazada.
+
+Si creés que hubo un error o querés hacer una nueva consulta, podés escribir nuevamente por este chat.`
+    );
+
+    await sendMessage(ADMIN_ID, `❌ Solicitud rechazada y usuario notificado.
+
+ID: <code>${userId}</code>`);
+    return res.status(200).json({ ok: true });
+  }
 
   if (text.startsWith("/enviarusuario") && String(chatId) === ADMIN_ID) {
     const parts = text.split(" ");
@@ -511,7 +639,7 @@ Origen: ${sourceLabel}
 ID: ${chatId}
 Username: @${username}
 Nombre: ${firstName} ${lastName}`,
-      { inline_keyboard: [[{ text: "✅ Confirmar carga", callback_data: `confirmar_carga_${chatId}` }]] }
+      adminButtons(chatId)
     );
 
     await sendMessage(chatId, "✅ Comprobante recibido.\n\nUn administrador lo revisará y acreditará tu carga a la brevedad.");
@@ -531,7 +659,8 @@ Nombre: ${firstName} ${lastName}`,
 Origen: ${startSourceLabel}
 ID: ${chatId}
 Username: @${username}
-Nombre: ${firstName} ${lastName}`
+Nombre: ${firstName} ${lastName}`,
+      adminButtons(chatId)
     );
 
     sessions[chatId] = { source: startSource };
@@ -550,7 +679,8 @@ Nombre: ${firstName} ${lastName}`
 Origen: ${sourceLabel}
 ID: ${chatId}
 Username: @${username}
-Nombre: ${firstName} ${lastName}`
+Nombre: ${firstName} ${lastName}`,
+      adminButtons(chatId)
     );
 
     sessions[chatId] = { step: "name", source };
@@ -595,18 +725,18 @@ Nombre: ${firstName} ${lastName}`
 
   if (text === "🤝 Recomendación") {
     await sendMessage(chatId, "🤝 Recomendación\n\nEnviá una captura donde nos recomendaste y/o etiquetaste.\n\nPlataformas válidas:\n\n✅ Estados de WhatsApp\n✅ Facebook\n\nEtiqueta @recoronabetadm @nicolasmaximocorona\n\nY recibi tu premio 🥇 🏆 🥳", bonusesMenu());
-    await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `🤝 <b>SOLICITUD RECOMENDACIÓN</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`, adminButtons(chatId));
     return res.status(200).json({ ok: true });
   }
 
   if (text === "💎 Fidelidad") {
     await sendMessage(chatId, "💎 Fidelidad\n\nLuego de que tu recomendado realice su primera carga, ambos reciben su bono especial 🥳💸🎁💰\n\n♦️ Reclama el tuyo ahora.", bonusesMenu());
-    await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `💎 <b>SOLICITUD FIDELIDAD</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`, adminButtons(chatId));
     return res.status(200).json({ ok: true });
   }
 
   if (text === "⭐ Acceso VIP") {
-    await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`);
+    await sendMessage(ADMIN_ID, `⭐ <b>SOLICITUD VIP</b>\n\nOrigen: ${sourceLabel}\nID: ${chatId}\nUsername: @${username}\nNombre: ${firstName} ${lastName}`, adminButtons(chatId));
     await sendMessage(chatId, "⭐ <b>Acceso VIP</b>\n\nLos usuarios VIP reciben atención prioritaria, beneficios exclusivos y acceso a un canal privado.\n\nRequisito: actividad superior a $100.000.\n\nTu solicitud fue enviada a un administrador.", afterRegisterMenu());
     return res.status(200).json({ ok: true });
   }
@@ -661,7 +791,7 @@ Username: @${username}
 Nombre Telegram: ${firstName} ${lastName}
 
 Cuando retires las fichas, tocá el botón de abajo.`,
-      { inline_keyboard: [[{ text: "💸 Retiro realizado", callback_data: `retiro_realizado_${chatId}` }]] }
+      adminButtons(chatId)
     );
 
     await sendMessage(chatId, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.\n\nCuando esté listo, te vamos a pedir los datos de acreditación.");
@@ -702,7 +832,7 @@ Telegram:
 ID: ${chatId}
 Username: @${username}
 Nombre Telegram: ${firstName} ${lastName}`,
-      { inline_keyboard: [[{ text: "✅ Pago enviado", callback_data: `pago_enviado_${chatId}` }]] }
+      adminButtons(chatId)
     );
 
     await sendMessage(ADMIN_ID, "📎 Cuando realices el pago, usá:\n\n" + `/comprobantepago ${chatId}`);
@@ -742,7 +872,8 @@ Origen: ${sessionSourceLabel}
 Telegram:
 ID: ${chatId}
 Username: @${username}
-Nombre Telegram: ${firstName} ${lastName}`
+Nombre Telegram: ${firstName} ${lastName}`,
+      adminButtons(chatId)
     );
 
     await sendMessage(
@@ -819,7 +950,7 @@ Nombre Telegram: ${firstName} ${lastName}`;
     await sendMessage(
       ADMIN_ID,
       adminMessage,
-      { inline_keyboard: [[{ text: "📩 Enviar usuario", callback_data: `enviar_usuario_${chatId}` }]] }
+      adminButtons(chatId)
     );
 
     await saveUserToSheet({
