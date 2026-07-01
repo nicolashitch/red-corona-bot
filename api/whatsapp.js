@@ -1,4 +1,4 @@
-Wsp.js lunes 29 15:13 hs  import { google } from "googleapis";
+import { google } from "googleapis";
 import { createHash } from "crypto";
 
 const ADMIN_ID = "8291674623";
