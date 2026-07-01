@@ -222,28 +222,34 @@ async function updateUser(userId, contactName, updates = {}) {
 }
 
 function mainMenu() {
-  return `👑 Bienvenido a Red Corona Bett
+  return `👑🔥═════ RED CORONA BETT ═════🔥👑
 
-Elegí una opción:
+⚡️ Bienvenido a la experiencia oficial ⚡️
 
-1️⃣ Crear Usuario
-2️⃣ Cargar
-3️⃣ Gané y quiero retirar
-4️⃣ Hablar con un ADM
-5️⃣ Canal Oficial
-6️⃣ Beneficios
+🔥 Elegí una opción para continuar 🔥
 
-0️⃣ Menú`;
+1️⃣ 🚀 CREAR USUARIO 🚀
+2️⃣ ✅ REALIZAR CARGA ⚡️
+3️⃣ 💳 SOLICITAR RETIRO 🥳
+4️⃣ 🧌 HABLAR CON UN ADM 🧟‍♂️
+5️⃣ 🌟 CANAL OFICIAL 📢
+6️⃣ 🧞‍♂️ BENEFICIOS 🎁
+
+🔥⚡️ RESPONDÉ CON EL NÚMERO ⚡️🔥
+
+0️⃣ 🏆 MENÚ PRINCIPAL`;
 }
 
 function platformMenu() {
-  return `🎮 Elegí la plataforma:
+  return `🎮🔥 SELECCIONÁ TU PLATAFORMA 🔥🎮
 
-1️⃣ Bet Space
-2️⃣ Ganamosnet Org
-3️⃣ Zeus
+1️⃣ 💫 BET SPACE
+2️⃣ 🌟 GANAMOSNET ORG
+3️⃣ ⚡ ZEUS
 
-0️⃣ Menú`;
+🚀 Respondé con el número elegido 🚀
+
+0️⃣ 🏆 MENÚ PRINCIPAL`;
 }
 
 function getPlatform(text) {
