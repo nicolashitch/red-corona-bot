@@ -86,8 +86,8 @@ async function sendMetaEvent(eventName, userId, customData = {}) {
             external_id: [hashValue(userId)]
           },
           custom_data: eventName === "Purchase"
-  ? { value: customData.value || 1, currency: customData.currency || "USD", ...customData }
-  : customData
+            ? { value: customData.value || 1, currency: customData.currency || "USD", ...customData }
+            : customData
         }
       ]
     };
@@ -122,6 +122,10 @@ function adminButtons(userId) {
       [
         { text: "💸 Retiro realizado", callback_data: `retiro_realizado_${userId}` },
         { text: "✅ Pago enviado", callback_data: `pago_enviado_${userId}` }
+      ],
+      [
+        { text: "❌ Rechazar", callback_data: `rechazar_${userId}` },
+        { text: "✍️ Mensaje libre", callback_data: `mensaje_libre_${userId}` }
       ]
     ]
   };
@@ -222,20 +226,20 @@ async function updateUser(userId, contactName, updates = {}) {
 }
 
 function mainMenu() {
-  return `👑🔥═════ RED CORONA BETT ═════🔥👑
+  return `👑🔥 RED CORONA BETT 🔥👑
 
 ⚡️ Bienvenido a la experiencia oficial ⚡️
 
-🔥 Elegí una opción para continuar 🔥
+• Elegí una opción para continuar
 
-1️⃣ 🚀 CREAR USUARIO 🚀
+1️⃣ ♦️ CREAR USUARIO 🚀
 2️⃣ ✅ REALIZAR CARGA ⚡️
 3️⃣ 💳 SOLICITAR RETIRO 🥳
 4️⃣ 🧌 HABLAR CON UN ADM 🧟‍♂️
 5️⃣ 🌟 CANAL OFICIAL 📢
 6️⃣ 🧞‍♂️ BENEFICIOS 🎁
 
-🔥⚡️ RESPONDÉ CON EL NÚMERO ⚡️🔥
+⚡️ RESPONDÉ CON EL NÚMERO ⚡️
 
 0️⃣ 🏆 MENÚ PRINCIPAL`;
 }
@@ -247,7 +251,7 @@ function platformMenu() {
 2️⃣ 🌟 GANAMOSNET ORG
 3️⃣ ⚡ ZEUS
 
-🚀 Respondé con el número elegido 🚀
+🚀 RESPONDÉ CON EL NÚMERO ELEGIDO 🚀
 
 0️⃣ 🏆 MENÚ PRINCIPAL`;
 }
@@ -286,7 +290,7 @@ async function handleText(from, contactName, text) {
     const platform = getPlatform(text);
 
     if (!platform) {
-      await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
+      await sendWhatsApp(from, "⚠️🔥 Opción inválida 🔥⚠️\n\n" + platformMenu());
       return;
     }
 
@@ -318,11 +322,11 @@ Para enviar usuario:
       adminButtons(from)
     );
 
-    await sendWhatsApp(from, `✅ Solicitud recibida.
+    await sendWhatsApp(from, `🔥✅ SOLICITUD RECIBIDA ✅🔥
 
-Tu acceso está siendo preparado por un administrador.
+⚡️ Tu acceso está siendo preparado por un administrador ⚡️
 
-💳 DATOS PARA CARGAR
+💳🔥 DATOS PARA CARGAR 🔥💳
 
 🏦 Alias:
 redcoronabet7
@@ -333,9 +337,9 @@ redcoronabet7
 👤 Titular:
 Sonia Raquel Gutierrez
 
-✅ Luego de transferir, enviá el comprobante por este mismo chat.
+📎 Luego de transferir, enviá el comprobante por este mismo chat.
 
-⏳ Un administrador revisará la acreditación y te confirmará cuando esté impactada.`);
+⏳⚡️ Un administrador revisará la acreditación y te confirmará cuando esté impactada ⚡️`);
     return;
   }
 
@@ -353,7 +357,7 @@ Sonia Raquel Gutierrez
     const platform = getPlatform(text);
 
     if (!platform) {
-      await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
+      await sendWhatsApp(from, "⚠️🔥 Opción inválida 🔥⚠️\n\n" + platformMenu());
       return;
     }
 
@@ -362,7 +366,11 @@ Sonia Raquel Gutierrez
       estado: "CARGA_MONTO"
     });
 
-    await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuánto vas a cargar?");
+    await sendWhatsApp(from, `💳🔥 PERFECTO 🔥💳
+
+⚡️ ¿Cuánto vas a cargar?
+
+🚀 Respondé solo con el monto.`);
     return;
   }
 
@@ -393,7 +401,7 @@ Esperando comprobante.`,
       adminButtons(from)
     );
 
-    await sendWhatsApp(from, `💳 DATOS PARA CARGAR
+    await sendWhatsApp(from, `💳🔥 DATOS PARA CARGAR 🔥💳
 
 🏦 Alias:
 redcoronabet7
@@ -404,7 +412,9 @@ redcoronabet7
 👤 Titular:
 Sonia Raquel Gutierrez
 
-✅ Luego enviá el comprobante por este mismo chat.`);
+📎 Luego enviá el comprobante por este mismo chat.
+
+⚡️ Apenas lo recibamos, seguimos con la revisión.`);
     return;
   }
 
@@ -414,7 +424,9 @@ Sonia Raquel Gutierrez
       primerRetiro: `${row[12] || ""}\nCVU/CBU: ${text}`
     });
 
-    await sendWhatsApp(from, "Perfecto ✅\n\nAhora enviame el titular de la cuenta.");
+    await sendWhatsApp(from, `✅🔥 PERFECTO 🔥✅
+
+⚡️ Ahora enviame el titular de la cuenta.`);
     return;
   }
 
@@ -424,7 +436,9 @@ Sonia Raquel Gutierrez
       primerRetiro: `${row[12] || ""}\nTitular: ${text}`
     });
 
-    await sendWhatsApp(from, "Bien ✅\n\nAhora enviame el banco o billetera.");
+    await sendWhatsApp(from, `🏦⚡️ BIEN ⚡️🏦
+
+🔥 Ahora enviame el banco o billetera.`);
     return;
   }
 
@@ -447,7 +461,11 @@ Cuando pagues, usá:
       adminButtons(from)
     );
 
-    await sendWhatsApp(from, "✅ Datos recibidos.\n\nUn administrador realizará la acreditación.");
+    await sendWhatsApp(from, `✅🔥 DATOS RECIBIDOS 🔥✅
+
+⚡️ Un administrador realizará la acreditación.
+
+👑 Te avisaremos por este mismo chat.`);
     return;
   }
 
@@ -455,20 +473,32 @@ Cuando pagues, usá:
     if (text === "1") {
       await updateUser(from, contactName, { estado: "REG_NOMBRE" });
       await sendMetaEvent("RegistroIniciado", from, { source: "whatsapp" });
-      await sendWhatsApp(from, "👤 Perfecto.\n\n¿Cuál es tu nombre?");
+      await sendWhatsApp(from, `👤🔥 PERFECTO 🔥👤
+
+⚡️ ¿Cuál es tu nombre?
+
+🚀 Enviámelo para continuar.`);
       return;
     }
 
     if (text === "2") {
       await updateUser(from, contactName, { estado: "CARGA_USUARIO" });
       await sendMetaEvent("CargaIniciada", from, { source: "whatsapp" });
-      await sendWhatsApp(from, "💳 Perfecto.\n\n¿Cuál es tu usuario?");
+      await sendWhatsApp(from, `💳🔥 VAMOS CON TU CARGA 🔥💳
+
+⚡️ ¿Cuál es tu usuario?
+
+🚀 Escribilo tal cual aparece en la plataforma.`);
       return;
     }
 
     if (text === "3") {
       await updateUser(from, contactName, { estado: "RETIRO_USUARIO" });
-      await sendWhatsApp(from, "🥳 Perfecto.\n\n¿Cuál es tu usuario?");
+      await sendWhatsApp(from, `🥳💳 RETIRO EN MARCHA 💳🥳
+
+⚡️ ¿Cuál es tu usuario?
+
+🚀 Enviámelo para continuar.`);
       return;
     }
 
@@ -478,17 +508,30 @@ Cuando pagues, usá:
 ID: <code>${from}</code>
 Nombre WhatsApp: ${contactName}`, adminButtons(from));
 
-      await sendWhatsApp(from, "👨‍💼 Un administrador fue notificado.\n\nTambién podés escribir por Telegram:\nhttps://t.me/Eliamcorona");
+      await sendWhatsApp(from, `👨‍💼🔥 ADM NOTIFICADO 🔥👨‍💼
+
+⚡️ Un administrador fue notificado.
+
+También podés escribir por Telegram:
+https://t.me/Eliamcorona`);
       return;
     }
 
     if (text === "5") {
-      await sendWhatsApp(from, "📢 Canal Oficial:\n\nhttps://t.me/redcoronabet");
+      await sendWhatsApp(from, `📢🌟 CANAL OFICIAL 🌟📢
+
+⚡️ Entrá desde acá:
+
+https://t.me/redcoronabet`);
       return;
     }
 
     if (text === "6") {
-      await sendWhatsApp(from, "🎁 Beneficios disponibles por el canal oficial:\n\nhttps://t.me/redcoronabet");
+      await sendWhatsApp(from, `🎁🧞‍♂️ BENEFICIOS DISPONIBLES 🧞‍♂️🎁
+
+⚡️ Los beneficios activos se informan por el canal oficial:
+
+https://t.me/redcoronabet`);
       return;
     }
   }
@@ -507,7 +550,7 @@ Nombre WhatsApp: ${contactName}`, adminButtons(from));
     const platform = getPlatform(text);
 
     if (!platform) {
-      await sendWhatsApp(from, "Opción inválida.\n\n" + platformMenu());
+      await sendWhatsApp(from, "⚠️🔥 Opción inválida 🔥⚠️\n\n" + platformMenu());
       return;
     }
 
@@ -516,7 +559,11 @@ Nombre WhatsApp: ${contactName}`, adminButtons(from));
       estado: "RETIRO_MONTO"
     });
 
-    await sendWhatsApp(from, "Perfecto ✅\n\n¿Cuánto querés retirar?");
+    await sendWhatsApp(from, `💳🔥 PERFECTO 🔥💳
+
+⚡️ ¿Cuánto querés retirar?
+
+🚀 Enviá el monto para continuar.`);
     return;
   }
 
@@ -542,7 +589,11 @@ Cuando retires las fichas, usá el botón o:
       adminButtons(from)
     );
 
-    await sendWhatsApp(from, "✅ Solicitud recibida.\n\nUn administrador revisará tu usuario, monto y plataforma.");
+    await sendWhatsApp(from, `✅🔥 SOLICITUD RECIBIDA 🔥✅
+
+⚡️ Un administrador revisará tu usuario, monto y plataforma.
+
+👑 Te confirmaremos por este chat.`);
     return;
   }
 
@@ -573,7 +624,11 @@ Para confirmar carga:
     adminButtons(from)
   );
 
-  await sendWhatsApp(from, "✅ Comprobante recibido.\n\nUn administrador lo revisará y confirmará tu carga.");
+  await sendWhatsApp(from, `📎🔥 COMPROBANTE RECIBIDO 🔥📎
+
+⚡️ Un administrador lo revisará y confirmará tu carga.
+
+🚀 Te avisaremos por este mismo chat.`);
 }
 
 export default async function handler(req, res) {
