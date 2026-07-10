@@ -981,13 +981,13 @@ Tu acceso está siendo preparado por un administrador.
 💳 DATOS PARA CARGAR
 
 🏦 Alias:
-redcoronabet7
+redcoronabet.7
 
 🔢 CVU:
-000177500393009854128
+0000177507338008821880
 
 👤 Titular:
-Sonia Raquel Gutierrez
+Elias Nicolas Palet
 
 ✅ Luego de transferir, enviá el comprobante por este mismo chat.
 
