@@ -981,10 +981,10 @@ Tu acceso está siendo preparado por un administrador.
 💳 DATOS PARA CARGAR
 
 🏦 Alias:
-redcoronabet.7
+bedcoronabet7
 
 🔢 CVU:
-0000177507338008821880
+0000003100085480169920
 
 👤 Titular:
 Elias Nicolas Palet
