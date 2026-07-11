@@ -404,13 +404,13 @@ Esperando comprobante.`,
     await sendWhatsApp(from, `💳🔥 DATOS PARA CARGAR 🔥💳
 
 🏦 Alias:
-redcoronabet7
+bedcoronabet7
 
 🔢 CVU:
-000177500393009854128
+0000003100085480169920
 
 👤 Titular:
-Sonia Raquel Gutierrez
+Palet Elias Nicolas
 
 📎 Luego enviá el comprobante por este mismo chat.
 
