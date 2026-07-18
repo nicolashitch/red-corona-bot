@@ -329,13 +329,13 @@ Para enviar usuario:
 💳🔥 DATOS PARA CARGAR 🔥💳
 
 🏦 Alias:
-redcoronabet7
+betcorona7
 
 🔢 CVU:
-000177500393009854128
+0000003100085480169920
 
 👤 Titular:
-Sonia Raquel Gutierrez
+Elias Nicolas Palet
 
 📎 Luego de transferir, enviá el comprobante por este mismo chat.
 
