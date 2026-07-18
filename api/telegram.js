@@ -881,13 +881,13 @@ Nombre Telegram: ${firstName} ${lastName}`,
       `💳 <b>Datos para cargar</b>
 
 🏦 Alias:
-<code>redcoronabet7</code>
+<code>betcorona7</code>
 
 🔢 CVU:
-<code>000177500393009854128</code>
+<code>0000003100085480169920</code>
 
 👤 Titular:
-Sonia Raquel Gutierrez
+Elias Nicolas Palet
 
 ✅ Luego de transferir, enviá el comprobante por este mismo chat.
 
